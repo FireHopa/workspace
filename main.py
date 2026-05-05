@@ -4,7 +4,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, B
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, JSON, ForeignKey, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, JSON, ForeignKey, Boolean, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from pydantic import BaseModel
 from jose import JWTError, jwt
@@ -60,6 +60,9 @@ class DBTask(Base):
     id = Column(Integer, primary_key=True, index=True)
     template_id = Column(Integer, ForeignKey("templates.id"))
     assigned_to = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    final_approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     status = Column(String, default="A Fazer") 
     dynamic_data = Column(JSON) 
     folder = Column(String, default="Entrada")
@@ -70,6 +73,20 @@ class DBTask(Base):
     admin_feedback = Column(String, nullable=True) 
     admin_notes = Column(String, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    updated_at = Column(String, nullable=True)
+    completed_at = Column(String, nullable=True)
+
+class DBTaskActivity(Base):
+    __tablename__ = "task_activities"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"), index=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    actor_name = Column(String, nullable=True)
+    action = Column(String)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=True)
+    note = Column(String, nullable=True)
+    created_at = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
 
 class DBPlan(Base):
     __tablename__ = "plans"
@@ -110,6 +127,52 @@ class DBPersonalTask(Base):
     created_at = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
 
 Base.metadata.create_all(bind=engine)
+
+def migrate_database():
+    """Garante compatibilidade com bancos SQLite antigos sem perder dados."""
+    inspector = inspect(engine)
+    if "tasks" in inspector.get_table_names():
+        existing_columns = {col["name"] for col in inspector.get_columns("tasks")}
+        columns_to_add = {
+            "created_by": "INTEGER",
+            "reviewer_id": "INTEGER",
+            "final_approved_by": "INTEGER",
+            "updated_at": "VARCHAR",
+            "completed_at": "VARCHAR",
+        }
+        with engine.begin() as conn:
+            for column_name, column_type in columns_to_add.items():
+                if column_name not in existing_columns:
+                    conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {column_name} {column_type}"))
+
+migrate_database()
+
+def now_str():
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+def add_task_activity(db: Session, task_id: int, actor_id: Optional[int], actor_name: Optional[str], action: str, from_status: Optional[str] = None, to_status: Optional[str] = None, note: Optional[str] = None):
+    activity = DBTaskActivity(
+        task_id=task_id,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        action=action,
+        from_status=from_status,
+        to_status=to_status,
+        note=note,
+        created_at=now_str(),
+    )
+    db.add(activity)
+    return activity
+
+def add_notification_to_user(db: Session, user_id: Optional[int], text_value: str):
+    if not user_id:
+        return
+    user = db.query(DBUser).filter(DBUser.id == user_id).first()
+    if not user:
+        return
+    nots = user.notifications or []
+    new_not = {"id": int(datetime.utcnow().timestamp() * 1000), "text": text_value, "read": False}
+    user.notifications = [new_not] + nots
 
 def get_db():
     db = SessionLocal()
@@ -169,11 +232,12 @@ class TemplateResponse(BaseModel):
     id: int; name: str; schema_fields: Dict[str, Any]; is_recurrent: bool
     class Config: from_attributes = True
 
-class TaskCreate(BaseModel): template_id: int; assigned_to: int; dynamic_data: Dict[str, Any]; priority: str; deadline: Optional[str]; admin_attachments: Optional[List[str]] = []; admin_notes: Optional[str] = None; client_id: Optional[int] = None
-class BulkTaskCreate(BaseModel): template_id: int; target_team_role: str; dynamic_data: Dict[str, Any]; priority: str; deadline: Optional[str]; admin_attachments: Optional[List[str]] = []; admin_notes: Optional[str] = None; client_id: Optional[int] = None
-class TaskUpdate(BaseModel): dynamic_data: Dict[str, Any]; status: str; folder: Optional[str] = None; admin_feedback: Optional[str] = None
+class TaskCreate(BaseModel): template_id: int; assigned_to: int; dynamic_data: Dict[str, Any]; priority: str; deadline: Optional[str]; admin_attachments: Optional[List[str]] = []; admin_notes: Optional[str] = None; client_id: Optional[int] = None; created_by: Optional[int] = None; reviewer_id: Optional[int] = None
+class BulkTaskCreate(BaseModel): template_id: int; target_team_role: str; dynamic_data: Dict[str, Any]; priority: str; deadline: Optional[str]; admin_attachments: Optional[List[str]] = []; admin_notes: Optional[str] = None; client_id: Optional[int] = None; created_by: Optional[int] = None; reviewer_id: Optional[int] = None
+class TaskUpdate(BaseModel): dynamic_data: Dict[str, Any]; status: str; folder: Optional[str] = None; admin_feedback: Optional[str] = None; actor_id: Optional[int] = None; actor_name: Optional[str] = None
 class NotificationCreate(BaseModel): text: str
 class CommentCreate(BaseModel): sender: str; text: str
+class TaskFlowAction(BaseModel): actor_id: Optional[int] = None; actor_name: Optional[str] = None; feedback: Optional[str] = None
 class PasswordUpdate(BaseModel): current_password: str; new_password: str
 class PlanCreate(BaseModel): name: str
 class PlanResponse(BaseModel):
@@ -272,34 +336,173 @@ def update_template(template_id: int, template: TemplateCreate, db: Session = De
 
 @app.post("/tasks/")
 def create_task(task: TaskCreate, db: Session = Depends(get_db)):
-    new_task = DBTask(template_id=task.template_id, assigned_to=task.assigned_to, dynamic_data=task.dynamic_data, folder="Entrada", priority=task.priority, deadline=task.deadline, admin_attachments=task.admin_attachments, admin_notes=task.admin_notes, client_id=task.client_id)
-    db.add(new_task); db.commit(); db.refresh(new_task)
+    creator = db.query(DBUser).filter(DBUser.id == task.created_by).first() if task.created_by else None
+    new_task = DBTask(
+        template_id=task.template_id,
+        assigned_to=task.assigned_to,
+        created_by=task.created_by,
+        reviewer_id=task.reviewer_id,
+        dynamic_data=task.dynamic_data,
+        folder="Entrada",
+        priority=task.priority,
+        deadline=task.deadline,
+        admin_attachments=task.admin_attachments,
+        admin_notes=task.admin_notes,
+        client_id=task.client_id,
+        updated_at=now_str(),
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    add_task_activity(db, new_task.id, task.created_by, creator.name if creator else None, "Tarefa criada", None, "A Fazer", "Tarefa delegada para execução")
+    db.commit()
+    db.refresh(new_task)
     return new_task
 
 @app.post("/tasks/bulk/")
 def create_bulk_tasks(bulk_task: BulkTaskCreate, db: Session = Depends(get_db)):
-    users = db.query(DBUser).filter(DBUser.team_role == bulk_task.target_team_role).all()
+    users = db.query(DBUser).filter(DBUser.team_role == bulk_task.target_team_role, DBUser.role == "employee").all()
     if not users: raise HTTPException(status_code=404)
+    creator = db.query(DBUser).filter(DBUser.id == bulk_task.created_by).first() if bulk_task.created_by else None
     for u in users:
-        new_task = DBTask(template_id=bulk_task.template_id, assigned_to=u.id, dynamic_data=bulk_task.dynamic_data, folder="Entrada", priority=bulk_task.priority, deadline=bulk_task.deadline, admin_attachments=bulk_task.admin_attachments, admin_notes=bulk_task.admin_notes, client_id=bulk_task.client_id)
+        new_task = DBTask(
+            template_id=bulk_task.template_id,
+            assigned_to=u.id,
+            created_by=bulk_task.created_by,
+            reviewer_id=bulk_task.reviewer_id,
+            dynamic_data=bulk_task.dynamic_data,
+            folder="Entrada",
+            priority=bulk_task.priority,
+            deadline=bulk_task.deadline,
+            admin_attachments=bulk_task.admin_attachments,
+            admin_notes=bulk_task.admin_notes,
+            client_id=bulk_task.client_id,
+            updated_at=now_str(),
+        )
         db.add(new_task)
+        db.flush()
+        add_task_activity(db, new_task.id, bulk_task.created_by, creator.name if creator else None, "Tarefa criada em lote", None, "A Fazer", f"Delegada para {u.name}")
     db.commit()
     return {"message": "Tarefas delegadas!"}
 
 @app.get("/tasks/{user_id}")
-def get_user_tasks(user_id: int, db: Session = Depends(get_db)): return db.query(DBTask).filter(DBTask.assigned_to == user_id).all()
+def get_user_tasks(user_id: int, db: Session = Depends(get_db)):
+    return db.query(DBTask).filter(DBTask.assigned_to == user_id).all()
+
+@app.get("/tasks-created/{user_id}")
+def get_tasks_created_by_user(user_id: int, db: Session = Depends(get_db)):
+    return db.query(DBTask).filter(DBTask.created_by == user_id).all()
+
+@app.get("/reviewer-tasks/{user_id}")
+def get_reviewer_tasks(user_id: int, db: Session = Depends(get_db)):
+    return db.query(DBTask).filter(DBTask.reviewer_id == user_id).all()
 
 @app.get("/all-tasks/")
 def get_all_tasks_admin(db: Session = Depends(get_db)): return db.query(DBTask).all()
+
+@app.get("/task-activities/")
+def get_all_task_activities(db: Session = Depends(get_db)):
+    return db.query(DBTaskActivity).order_by(DBTaskActivity.id.desc()).limit(500).all()
+
+@app.get("/tasks/{task_id}/activities")
+def get_task_activities(task_id: int, db: Session = Depends(get_db)):
+    return db.query(DBTaskActivity).filter(DBTaskActivity.task_id == task_id).order_by(DBTaskActivity.id.desc()).all()
 
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get_db)):
     db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
     if not db_task: raise HTTPException(status_code=404)
+    previous_status = db_task.status
     db_task.dynamic_data = task_update.dynamic_data
     db_task.status = task_update.status
+    db_task.updated_at = now_str()
     if task_update.folder is not None: db_task.folder = task_update.folder
     if task_update.admin_feedback is not None: db_task.admin_feedback = task_update.admin_feedback
+    if previous_status != db_task.status:
+        add_task_activity(db, task_id, task_update.actor_id, task_update.actor_name, "Status atualizado", previous_status, db_task.status, task_update.admin_feedback)
+    db.commit(); db.refresh(db_task)
+    return db_task
+
+@app.post("/tasks/{task_id}/send-to-reviewer")
+def send_task_to_reviewer(task_id: int, action: TaskFlowAction, db: Session = Depends(get_db)):
+    db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not db_task: raise HTTPException(status_code=404)
+    previous_status = db_task.status
+    next_status = "Aguardando Conferência" if db_task.reviewer_id else "Aguardando Aprovação"
+    db_task.status = next_status
+    db_task.folder = next_status
+    db_task.admin_feedback = ""
+    db_task.updated_at = now_str()
+    add_task_activity(db, task_id, action.actor_id, action.actor_name, "Entrega enviada", previous_status, next_status, "Executor enviou a tarefa para revisão")
+    if db_task.reviewer_id:
+        add_notification_to_user(db, db_task.reviewer_id, f"Nova tarefa aguardando conferência: #{db_task.id}")
+    else:
+        admin = db.query(DBUser).filter(DBUser.email == ADMIN_EMAIL).first()
+        add_notification_to_user(db, admin.id if admin else 1, f"Tarefa enviada para aprovação por {action.actor_name or 'um parceiro'}")
+    db.commit(); db.refresh(db_task)
+    return db_task
+
+@app.post("/tasks/{task_id}/reviewer-approve")
+def reviewer_approve_task(task_id: int, action: TaskFlowAction, db: Session = Depends(get_db)):
+    db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not db_task: raise HTTPException(status_code=404)
+    previous_status = db_task.status
+    db_task.status = "Aguardando OK Final"
+    db_task.folder = "Aguardando OK Final"
+    db_task.admin_feedback = ""
+    db_task.updated_at = now_str()
+    add_task_activity(db, task_id, action.actor_id, action.actor_name, "Conferência aprovada", previous_status, db_task.status, action.feedback or "Conferente aprovou a entrega")
+    if db_task.created_by:
+        add_notification_to_user(db, db_task.created_by, f"Tarefa #{db_task.id} conferida. Aguardando seu OK final.")
+    db.commit(); db.refresh(db_task)
+    return db_task
+
+@app.post("/tasks/{task_id}/reviewer-reject")
+def reviewer_reject_task(task_id: int, action: TaskFlowAction, db: Session = Depends(get_db)):
+    db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not db_task: raise HTTPException(status_code=404)
+    if not action.feedback or not action.feedback.strip():
+        raise HTTPException(status_code=400, detail="Informe o motivo da devolução.")
+    previous_status = db_task.status
+    db_task.status = "A Fazer"
+    db_task.folder = "Entrada"
+    db_task.admin_feedback = action.feedback.strip()
+    db_task.updated_at = now_str()
+    add_task_activity(db, task_id, action.actor_id, action.actor_name, "Conferência recusada", previous_status, db_task.status, action.feedback.strip())
+    add_notification_to_user(db, db_task.assigned_to, "Tarefa devolvida pelo conferente para correção.")
+    db.commit(); db.refresh(db_task)
+    return db_task
+
+@app.post("/tasks/{task_id}/final-approve")
+def final_approve_task(task_id: int, action: TaskFlowAction, db: Session = Depends(get_db)):
+    db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not db_task: raise HTTPException(status_code=404)
+    previous_status = db_task.status
+    db_task.status = "Aprovada"
+    db_task.folder = "Concluídas"
+    db_task.final_approved_by = action.actor_id
+    db_task.updated_at = now_str()
+    db_task.completed_at = now_str()
+    add_task_activity(db, task_id, action.actor_id, action.actor_name, "OK final aprovado", previous_status, db_task.status, action.feedback or "Solicitante aprovou a entrega final")
+    add_notification_to_user(db, db_task.assigned_to, "Tarefa aprovada pelo solicitante.")
+    if db_task.reviewer_id:
+        add_notification_to_user(db, db_task.reviewer_id, "Tarefa recebeu OK final do solicitante.")
+    db.commit(); db.refresh(db_task)
+    return db_task
+
+@app.post("/tasks/{task_id}/final-reject")
+def final_reject_task(task_id: int, action: TaskFlowAction, db: Session = Depends(get_db)):
+    db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
+    if not db_task: raise HTTPException(status_code=404)
+    if not action.feedback or not action.feedback.strip():
+        raise HTTPException(status_code=400, detail="Informe o motivo da devolução.")
+    previous_status = db_task.status
+    db_task.status = "A Fazer"
+    db_task.folder = "Entrada"
+    db_task.admin_feedback = action.feedback.strip()
+    db_task.updated_at = now_str()
+    add_task_activity(db, task_id, action.actor_id, action.actor_name, "OK final recusado", previous_status, db_task.status, action.feedback.strip())
+    add_notification_to_user(db, db_task.assigned_to, "Tarefa devolvida pelo solicitante para correção.")
     db.commit(); db.refresh(db_task)
     return db_task
 
@@ -307,6 +510,7 @@ def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get
 def delete_task(task_id: int, db: Session = Depends(get_db)):
     db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
     if not db_task: raise HTTPException(status_code=404)
+    db.query(DBTaskActivity).filter(DBTaskActivity.task_id == task_id).delete()
     db.delete(db_task); db.commit()
     return {"msg": "Tarefa excluída"}
 
@@ -317,6 +521,8 @@ def add_comment(task_id: int, comment: CommentCreate, db: Session = Depends(get_
     current_comments = db_task.comments or []
     new_comment = {"sender": comment.sender, "text": comment.text, "time": datetime.utcnow().strftime("%d/%m %H:%M")}
     db_task.comments = current_comments + [new_comment]
+    db_task.updated_at = now_str()
+    add_task_activity(db, task_id, None, comment.sender, "Comentário adicionado", db_task.status, db_task.status, comment.text)
     db.commit(); db.refresh(db_task)
     return db_task
 
