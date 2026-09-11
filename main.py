@@ -73,6 +73,7 @@ class DBTask(Base):
     admin_feedback = Column(String, nullable=True) 
     admin_notes = Column(String, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    created_at = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"), nullable=True)
     updated_at = Column(String, nullable=True)
     completed_at = Column(String, nullable=True)
 
@@ -137,6 +138,7 @@ def migrate_database():
             "created_by": "INTEGER",
             "reviewer_id": "INTEGER",
             "final_approved_by": "INTEGER",
+            "created_at": "VARCHAR",
             "updated_at": "VARCHAR",
             "completed_at": "VARCHAR",
         }
@@ -163,6 +165,37 @@ def add_task_activity(db: Session, task_id: int, actor_id: Optional[int], actor_
     )
     db.add(activity)
     return activity
+
+def get_template_field_type_and_required(field_config: Any):
+    """Aceita templates antigos (campo: "text") e novos (campo: {type, required})."""
+    if isinstance(field_config, dict):
+        return field_config.get("type") or "text", bool(field_config.get("required", False))
+    return field_config or "text", False
+
+def is_required_value_filled(field_type: str, value: Any) -> bool:
+    if field_type == "checkbox":
+        return value is True
+    if value is None:
+        return False
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return bool(cleaned) and cleaned.lower() != "loading..."
+    if isinstance(value, (list, dict)):
+        return len(value) > 0
+    return bool(value)
+
+def get_missing_required_fields(db: Session, task: DBTask) -> List[str]:
+    template = db.query(DBTemplate).filter(DBTemplate.id == task.template_id).first()
+    if not template or not template.schema_fields:
+        return []
+
+    answers = task.dynamic_data or {}
+    missing = []
+    for field_label, field_config in template.schema_fields.items():
+        field_type, required = get_template_field_type_and_required(field_config)
+        if required and not is_required_value_filled(field_type, answers.get(field_label)):
+            missing.append(field_label)
+    return missing
 
 def add_notification_to_user(db: Session, user_id: Optional[int], text_value: str):
     if not user_id:
@@ -349,6 +382,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
         admin_attachments=task.admin_attachments,
         admin_notes=task.admin_notes,
         client_id=task.client_id,
+        created_at=now_str(),
         updated_at=now_str(),
     )
     db.add(new_task)
@@ -377,6 +411,7 @@ def create_bulk_tasks(bulk_task: BulkTaskCreate, db: Session = Depends(get_db)):
             admin_attachments=bulk_task.admin_attachments,
             admin_notes=bulk_task.admin_notes,
             client_id=bulk_task.client_id,
+            created_at=now_str(),
             updated_at=now_str(),
         )
         db.add(new_task)
@@ -427,6 +462,9 @@ def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get
 def send_task_to_reviewer(task_id: int, action: TaskFlowAction, db: Session = Depends(get_db)):
     db_task = db.query(DBTask).filter(DBTask.id == task_id).first()
     if not db_task: raise HTTPException(status_code=404)
+    missing_required_fields = get_missing_required_fields(db, db_task)
+    if missing_required_fields:
+        raise HTTPException(status_code=400, detail=f"Campos obrigatórios pendentes: {', '.join(missing_required_fields)}")
     previous_status = db_task.status
     next_status = "Aguardando Conferência" if db_task.reviewer_id else "Aguardando Aprovação"
     db_task.status = next_status
