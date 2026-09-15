@@ -1,6 +1,9 @@
 import os
 import shutil
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Body
+import secrets
+import tempfile
+from pathlib import Path
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Body, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,13 +13,37 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 import bcrypt
 from dotenv import load_dotenv
 
 load_dotenv() 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "chave_fallback_insegura_apenas_para_dev")
+def load_signing_key():
+    configured = os.getenv("SECRET_KEY", "").strip()
+    if configured and configured != "chave_fallback_insegura_apenas_para_dev":
+        return configured
+    # Chave privada persistente quando o servidor ainda não tem SECRET_KEY.
+    # Publicação atômica evita chaves diferentes com vários workers.
+    key_path = Path(__file__).resolve().parent / ".jwt_secret_key"
+    if not key_path.exists():
+        fd, temp_path = tempfile.mkstemp(prefix=".jwt-key-", dir=str(key_path.parent))
+        try:
+            with os.fdopen(fd, "w") as handle:
+                handle.write(secrets.token_urlsafe(48))
+            try:
+                os.link(temp_path, key_path)
+            except FileExistsError:
+                pass
+        finally:
+            os.unlink(temp_path)
+    value = key_path.read_text().strip()
+    if not value:
+        raise RuntimeError("Configure SECRET_KEY: arquivo de chave vazio.")
+    return value
+
+
+SECRET_KEY = load_signing_key()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sistema_tarefas.db")
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
 
@@ -217,7 +244,10 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except ValueError:
+        return False
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -237,7 +267,46 @@ async def lifespan(app: FastAPI):
     db.close()
     yield
 
-app = FastAPI(title="Sistema de Gestão", lifespan=lifespan)
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    error = HTTPException(status_code=401, detail="Sessão inválida ou expirada.", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"require_exp": True})
+        email = payload.get("sub")
+        if not email:
+            raise error
+    except JWTError:
+        raise error
+    user = db.query(DBUser).filter(DBUser.email == email).first()
+    if not user:
+        raise error
+    return user
+
+
+def require_module_access(request: Request, db: Session = Depends(get_db)):
+    if request.url.path.rstrip("/") == "/token":
+        return
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(401, "Faça login para acessar o sistema.", headers={"WWW-Authenticate": "Bearer"})
+    user = get_current_user(token, db)
+    path = request.url.path.rstrip("/")
+    if user.role == "finance":
+        allowed = path.startswith("/finance/") or path == "/me" or (
+            path == f"/users/{user.id}/password" and request.method == "PUT")
+        if not allowed:
+            raise HTTPException(403, "Este usuário tem acesso somente ao Financeiro.")
+    elif user.role not in ("admin", "employee", "conferente"):
+        raise HTTPException(403, "Perfil de acesso inválido.")
+
+
+def require_admin(user: DBUser = Depends(get_current_user)):
+    if user.role != "admin":
+        raise HTTPException(403, "Somente administradores podem gerenciar usuários.")
+    return user
+
+
+app = FastAPI(title="Sistema de Gestão", lifespan=lifespan, dependencies=[Depends(require_module_access)])
 
 app.add_middleware(
     CORSMiddleware,
@@ -249,8 +318,8 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ---- SCHEMAS ----
-class UserCreate(BaseModel): name: str; email: str; password: str; role: str = "employee"; team_role: Optional[str] = None; is_strategist: bool = False
-class UserUpdate(BaseModel): role: Optional[str] = None; team_role: Optional[str] = None; is_strategist: Optional[bool] = None
+class UserCreate(BaseModel): name: str; email: str; password: str; role: Literal["admin", "employee", "conferente", "finance"] = "employee"; team_role: Optional[str] = None; is_strategist: bool = False
+class UserUpdate(BaseModel): role: Optional[Literal["admin", "employee", "conferente", "finance"]] = None; team_role: Optional[str] = None; is_strategist: Optional[bool] = None
 class UserResponse(BaseModel):
     id: int; name: str; email: str; role: str; team_role: Optional[str]; is_strategist: bool
     class Config: from_attributes = True
@@ -310,7 +379,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": token, "token_type": "bearer"}
 
 @app.put("/users/{user_id}/password")
-def update_password(user_id: int, passwords: PasswordUpdate, db: Session = Depends(get_db)):
+def update_password(user_id: int, passwords: PasswordUpdate, db: Session = Depends(get_db), actor: DBUser = Depends(get_current_user)):
+    if actor.id != user_id: raise HTTPException(403, "Você só pode alterar a própria senha.")
+    if len(passwords.new_password) < 6 or len(passwords.new_password.encode("utf-8")) > 72:
+        raise HTTPException(422, "Use uma senha de pelo menos 6 caracteres e até 72 bytes.")
     user = db.query(DBUser).filter(DBUser.id == user_id).first()
     if not user: raise HTTPException(status_code=404)
     if not verify_password(passwords.current_password, user.hashed_password): raise HTTPException(status_code=400, detail="Senha atual incorreta")
@@ -319,8 +391,15 @@ def update_password(user_id: int, passwords: PasswordUpdate, db: Session = Depen
     return {"msg": "Senha atualizada"}
 
 @app.post("/users/", response_model=UserResponse)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    if db.query(DBUser).filter(DBUser.email == user.email).first(): raise HTTPException(status_code=400)
+def create_user(user: UserCreate, db: Session = Depends(get_db), actor: DBUser = Depends(require_admin)):
+    if len(user.password) < 6 or len(user.password.encode("utf-8")) > 72:
+        raise HTTPException(422, "Use uma senha de pelo menos 6 caracteres e até 72 bytes.")
+    if not user.name.strip() or not user.email.strip():
+        raise HTTPException(422, "Nome e e-mail são obrigatórios.")
+    if db.query(DBUser).filter(DBUser.email == user.email).first(): raise HTTPException(status_code=400, detail="E-mail já cadastrado.")
+    if user.role == "finance":
+        user.team_role = None
+        user.is_strategist = False
     new_user = DBUser(name=user.name, email=user.email, hashed_password=get_password_hash(user.password), role=user.role, team_role=user.team_role, is_strategist=user.is_strategist)
     db.add(new_user); db.commit(); db.refresh(new_user)
     return new_user
@@ -329,11 +408,17 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 def get_all_users(db: Session = Depends(get_db)): return db.query(DBUser).all()
 
 @app.put("/users/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
+def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), actor: DBUser = Depends(require_admin)):
     user = db.query(DBUser).filter(DBUser.id == user_id).first()
+    if not user: raise HTTPException(404, "Usuário não encontrado.")
+    if actor.id == user_id and user_update.role not in (None, "admin"):
+        raise HTTPException(400, "Você não pode retirar o próprio acesso de administrador.")
     if user_update.role is not None: user.role = user_update.role
     if user_update.team_role is not None: user.team_role = user_update.team_role
     if user_update.is_strategist is not None: user.is_strategist = user_update.is_strategist
+    if user.role == "finance":
+        user.team_role = None
+        user.is_strategist = False
     db.commit(); db.refresh(user)
     return user
 
@@ -680,3 +765,11 @@ def delete_file(filename: str):
     if os.path.exists(file_path):
         os.remove(file_path); return {"message": "removido"}
     raise HTTPException(status_code=404)
+
+@app.get("/me", response_model=UserResponse)
+def current_profile(user: DBUser = Depends(get_current_user)):
+    return user
+
+
+from finance import register_finance
+register_finance(app, engine, get_db, get_current_user)
