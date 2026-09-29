@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#10233f" />
+  <title>Casa do Ads · Social Publisher</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+      <button class="mobile-sidebar-close" id="mobileSidebarClose" type="button" aria-label="Fechar menu">×</button>
+      <button class="brand" type="button" data-go-page="dashboard" aria-label="Ir para a visão geral">
+        <span class="brand-mark">CA</span>
+        <span class="brand-copy"><strong>Casa do Ads</strong><small>Social Publisher</small></span>
+      </button>
+
+      <div class="nav-section">
+        <span class="nav-section-label">PUBLICAÇÃO</span>
+        <nav class="side-nav" aria-label="Navegação principal">
+          <button class="nav-item active" type="button" data-page-target="dashboard"><span class="nav-icon">▦</span><span>Visão geral</span></button>
+          <button class="nav-item" type="button" data-page-target="publish"><span class="nav-icon">＋</span><span>Nova publicação</span></button>
+          <button class="nav-item" type="button" data-page-target="calendar"><span class="nav-icon">□</span><span>Calendário</span><span class="nav-count hidden" id="scheduledNavCount">0</span></button>
+          <button class="nav-item" type="button" data-page-target="drafts"><span class="nav-icon">✎</span><span>Rascunhos</span><span class="nav-count hidden" id="draftNavCount">0</span></button>
+          <button class="nav-item" type="button" data-page-target="templates"><span class="nav-icon">◫</span><span>Templates</span><span class="nav-count hidden" id="templateNavCount">0</span></button>
+          <button class="nav-item" type="button" data-page-target="publications"><span class="nav-icon">▤</span><span>Publicações</span></button>
+          <button class="nav-item" type="button" data-page-target="connections"><span class="nav-icon">◎</span><span>Contas conectadas</span></button>
+        </nav>
+      </div>
+
+      <div class="nav-section nav-section-system">
+        <span class="nav-section-label">SISTEMA</span>
+        <nav class="side-nav compact-nav" aria-label="Administração">
+          <button class="nav-item hidden" type="button" data-page-target="admin" data-admin-only><span class="nav-icon">⚙</span><span>Administração</span><span class="nav-badge">Técnico</span></button>
+          <a class="nav-item" href="about" target="_blank" rel="noreferrer"><span class="nav-icon">◉</span><span>Sobre</span></a>
+        </nav>
+      </div>
+
+      <div class="sidebar-foot">
+        <div class="sidebar-user">
+          <span class="sidebar-avatar" id="sidebarAvatar">SP</span>
+          <div class="sidebar-user-copy"><strong id="sidebarUserName">Social Publisher</strong><small id="sidebarUserEmail">Conta do Workspace</small><span class="sidebar-role" id="sidebarRoleBadge">Operador</span></div>
+        </div>
+        <div class="sidebar-environment"><span class="status-pulse"></span><span id="sideMode">Carregando...</span></div>
+        <form class="workspace-logout" action="logout" method="post"><button type="submit"><span>↪</span>Sair do sistema</button></form>
+      </div>
+    </aside>
+    <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Fechar menu"></button>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="topbar-copy">
+          <button class="mobile-menu-btn" id="mobileMenuBtn" type="button" aria-label="Abrir menu">☰</button>
+          <div>
+            <p class="eyebrow" id="pageEyebrow">SOCIAL PUBLISHER</p>
+            <h1 id="pageTitle">Visão geral</h1>
+            <p class="page-subtitle" id="pageSubtitle">Acompanhe suas redes e publique conteúdo em um só lugar.</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span id="modeBadge" class="badge neutral">Carregando</span>
+          <button class="icon-btn" id="refreshBtn" type="button" title="Atualizar dados" aria-label="Atualizar dados">↻</button>
+          <button class="header-primary-action" id="headerPrimaryAction" type="button"><span>＋</span>Nova publicação</button>
+        </div>
+      </header>
+
+      <div class="connectivity-banner hidden" id="connectivityBanner" role="status" aria-live="polite">
+        <span class="connectivity-icon" id="connectivityIcon">!</span>
+        <div><strong id="connectivityTitle">Conexão instável</strong><small id="connectivityDetail">Não foi possível atualizar os dados agora.</small></div>
+        <button type="button" id="connectivityRetryBtn">Tentar novamente</button>
+      </div>
+
+      <div class="app-page active" data-page="dashboard" id="dashboard-page">
+        <section class="dashboard-stats" aria-label="Resumo do Social Publisher">
+          <article class="dashboard-stat featured">
+            <span>Contas prontas</span>
+            <strong id="connectedMetric">0/6</strong>
+            <small>redes disponíveis para publicar</small>
+          </article>
+          <article class="dashboard-stat">
+            <span>Publicações</span>
+            <strong id="publishMetric">0</strong>
+            <small>registros no histórico</small>
+          </article>
+          <article class="dashboard-stat">
+            <span>Taxa de sucesso</span>
+            <strong id="successMetric">--</strong>
+            <small>envios concluídos por rede</small>
+          </article>
+          <article class="dashboard-stat">
+            <span>Precisa de atenção</span>
+            <strong id="attentionMetric">0</strong>
+            <small>contas ou envios com problema</small>
+          </article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel dashboard-panel networks-overview-panel">
+            <div class="dashboard-panel-head">
+              <div><h2>Suas redes</h2><p>Status das contas conectadas.</p></div>
+              <button class="text-btn" type="button" data-go-page="connections">Gerenciar contas</button>
+            </div>
+            <div id="dashboardConnections" class="dashboard-network-list">
+              <div class="dashboard-loading">Carregando conexões...</div>
+            </div>
+          </article>
+
+          <article class="panel dashboard-panel quick-start-panel">
+            <div class="dashboard-panel-head"><div><h2>Publicação rápida</h2><p>Do conteúdo ao envio em poucos passos.</p></div></div>
+            <div class="quick-start-list">
+              <div><span>1</span><p><strong>Crie o conteúdo</strong><small>Escolha texto, imagem ou vídeo.</small></p></div>
+              <div><span>2</span><p><strong>Selecione as redes</strong><small>O sistema mostra apenas os destinos compatíveis.</small></p></div>
+              <div><span>3</span><p><strong>Revise e publique</strong><small>Confira o preview e acompanhe o resultado.</small></p></div>
+            </div>
+            <button class="dashboard-cta" type="button" data-go-page="publish"><span>＋</span>Criar nova publicação</button>
+          </article>
+        </section>
+
+        <section class="panel dashboard-panel recent-panel">
+          <div class="dashboard-panel-head">
+            <div><h2>Publicações recentes</h2><p>Últimos envios realizados pelo Social Publisher.</p></div>
+            <button class="text-btn" type="button" data-go-page="publications">Ver todas</button>
+          </div>
+          <div id="dashboardRecent" class="dashboard-recent-list"><div class="dashboard-loading">Carregando publicações...</div></div>
+        </section>
+
+        <section class="panel dashboard-panel upcoming-panel">
+          <div class="dashboard-panel-head">
+            <div><h2>Próximos agendamentos</h2><p>Conteúdos que o Social Publisher enviará automaticamente.</p></div>
+            <button class="text-btn" type="button" data-go-page="calendar">Abrir calendário</button>
+          </div>
+          <div id="dashboardUpcoming" class="dashboard-upcoming-list"><div class="dashboard-loading">Carregando agenda...</div></div>
+        </section>
+      </div>
+
+      <div class="app-page" data-page="publish" id="publish-page">
+        <section class="publish-wizard" id="publish">
+          <div class="planner-edit-banner hidden" id="plannerEditBanner">
+            <div><span>✎</span><p><strong id="plannerEditTitle">Editando rascunho</strong><small id="plannerEditSubtitle">As alterações serão salvas neste item.</small></p></div>
+            <button type="button" id="plannerEditCloseBtn">Sair da edição</button>
+          </div>
+
+          <div class="composer-utility-bar">
+            <span id="composerSaveState">Alterações ainda não salvas</span>
+            <div class="composer-utility-actions"><button class="text-btn" id="openTemplatePickerBtn" type="button">◫ Usar template</button><button class="text-btn" id="saveAsTemplateBtn" type="button">☆ Salvar como template</button><button class="text-btn" id="saveDraftTopBtn" type="button">✎ Salvar rascunho</button></div>
+          </div>
+
+          <div class="panel wizard-progress" aria-label="Etapas da publicação">
+            <button class="wizard-progress-step active" type="button" data-publish-step-target="1">
+              <span>1</span><div><strong>Conteúdo</strong><small>O que será publicado</small></div><i>✓</i>
+            </button>
+            <div class="wizard-progress-line"></div>
+            <button class="wizard-progress-step" type="button" data-publish-step-target="2">
+              <span>2</span><div><strong>Redes</strong><small>Onde será publicado</small></div><i>✓</i>
+            </button>
+            <div class="wizard-progress-line"></div>
+            <button class="wizard-progress-step" type="button" data-publish-step-target="3">
+              <span>3</span><div><strong>Ajustes</strong><small>Opções de cada rede</small></div><i>✓</i>
+            </button>
+            <div class="wizard-progress-line"></div>
+            <button class="wizard-progress-step" type="button" data-publish-step-target="4">
+              <span>4</span><div><strong>Revisar</strong><small>Confira e publique</small></div><i>✓</i>
+            </button>
+          </div>
+
+          <form id="publishForm" novalidate>
+            <input id="mediaKind" name="mediaKind" type="hidden" value="text" />
+            <input id="mediaUrl" name="mediaUrl" type="hidden" value="" />
+
+            <div class="wizard-layout">
+              <div class="wizard-main">
+                <section class="panel wizard-card wizard-step active" data-publish-step="1">
+                  <div class="wizard-card-head">
+                    <div class="wizard-step-number">1</div>
+                    <div><p class="eyebrow">CONTEÚDO</p><h2>O que você quer publicar?</h2><p>Monte o conteúdo. O sistema cuida do formato técnico de envio para cada rede.</p></div>
+                    <span class="chip" id="kindBadge">Texto</span>
+                  </div>
+
+                  <div class="format-choice" aria-label="Formato da publicação" role="group">
+                    <button class="format-card type-btn active" data-kind="text" type="button">
+                      <span class="format-icon">≡</span><span><strong>Texto</strong><small>Legenda ou atualização sem mídia</small></span><i>✓</i>
+                    </button>
+                    <button class="format-card type-btn" data-kind="image" type="button">
+                      <span class="format-icon">▧</span><span><strong>Imagem</strong><small>Foto, arte ou criativo</small></span><i>✓</i>
+                    </button>
+                    <button class="format-card type-btn" data-kind="video" type="button">
+                      <span class="format-icon">▶</span><span><strong>Vídeo</strong><small>Vídeo, Reel ou conteúdo vertical</small></span><i>✓</i>
+                    </button>
+                  </div>
+
+                  <div class="wizard-fields">
+                    <label class="field">
+                      <span class="field-label"><b>Título</b><em id="titleCount">0/100</em></span>
+                      <input autocomplete="off" id="title" maxlength="100" name="title" placeholder="Ex.: Nova campanha da Casa do Ads" type="text" />
+                      <small>Opcional para a maioria das redes. Também ajuda a identificar a publicação no histórico.</small>
+                    </label>
+                    <label class="field">
+                      <span class="field-label"><b>Texto da publicação</b><em id="captionCount">0/3000</em></span>
+                      <textarea id="caption" maxlength="3000" name="caption" placeholder="Escreva sua legenda, descrição ou mensagem aqui..." rows="8"></textarea>
+                      <small>Você escreve uma vez e o conteúdo é adaptado ao fluxo de cada destino.</small>
+                    </label>
+                  </div>
+
+                  <div class="media-section hidden" id="mediaSection">
+                    <div class="media-section-head"><div><strong id="mediaSectionTitle">Adicione sua mídia</strong><small>O arquivo será preparado automaticamente para as redes selecionadas.</small></div><span class="auto-pill">Automático</span></div>
+                    <div aria-label="Selecionar arquivo" class="dropzone" id="dropzone" role="button" tabindex="0">
+                      <input hidden id="media" type="file" />
+                      <div class="upload-empty" id="emptyUpload">
+                        <span class="upload-icon">↑</span><strong id="uploadTitle">Arraste sua mídia aqui</strong><span id="fileHint">ou clique para selecionar</span>
+                        <button class="upload-button" type="button" tabindex="-1">Escolher arquivo</button>
+                      </div>
+                      <div class="media-preview-wrap hidden" id="mediaPreviewWrap">
+                        <img alt="Preview da imagem selecionada" class="media-preview hidden" id="imagePreview" />
+                        <video class="media-preview hidden" controls id="videoPreview" muted playsinline></video>
+                        <div class="file-overlay"><strong id="fileName">arquivo</strong><span id="fileMeta"></span></div>
+                      </div>
+                    </div>
+                    <div class="media-upload-footer"><span id="mediaAutomationHint">Você não precisa informar URL pública nem configurações de upload.</span><button class="text-btn hidden" id="clearMediaBtn" type="button">Trocar/remover arquivo</button></div>
+                  </div>
+
+                  <div class="wizard-actions right">
+                    <button class="wizard-primary" data-wizard-next type="button">Escolher redes <span>→</span></button>
+                  </div>
+                </section>
+
+                <section class="panel wizard-card wizard-step" data-publish-step="2">
+                  <div class="wizard-card-head">
+                    <div class="wizard-step-number">2</div>
+                    <div><p class="eyebrow">DESTINOS</p><h2>Onde você quer publicar?</h2><p>Mostramos apenas o que funciona com o formato escolhido e o status de cada conexão.</p></div>
+                    <button class="text-btn" id="selectAllBtn" type="button">Selecionar disponíveis</button>
+                  </div>
+
+                  <div class="network-grid wizard-network-grid">
+                    <label class="network-card" data-platform-card="youtube">
+                      <input name="platform" type="checkbox" value="youtube" />
+                      <span class="network-logo youtube-logo">▶</span>
+                      <span class="network-copy"><strong>YouTube</strong><small>Vídeo</small><em data-network-availability="youtube">Verificando conta...</em></span>
+                      <span class="check-mark">✓</span>
+                    </label>
+                    <label class="network-card" data-platform-card="instagram">
+                      <input name="platform" type="checkbox" value="instagram" />
+                      <span class="network-logo instagram-logo">◎</span>
+                      <span class="network-copy"><strong>Instagram</strong><small>Imagem / Reel</small><em data-network-availability="instagram">Verificando conta...</em></span>
+                      <span class="check-mark">✓</span>
+                    </label>
+                    <label class="network-card" data-platform-card="linkedin">
+                      <input name="platform" type="checkbox" value="linkedin" />
+                      <span class="network-logo linkedin-logo">in</span>
+                      <span class="network-copy"><strong>LinkedIn</strong><small>Texto / mídia</small><em data-network-availability="linkedin">Verificando conta...</em></span>
+                      <span class="check-mark">✓</span>
+                    </label>
+                    <label class="network-card" data-platform-card="tiktok">
+                      <input name="platform" type="checkbox" value="tiktok" />
+                      <span class="network-logo tiktok-logo">♪</span>
+                      <span class="network-copy"><strong>TikTok</strong><small>Foto / vídeo</small><em data-network-availability="tiktok">Verificando conta...</em></span>
+                      <span class="check-mark">✓</span>
+                    </label>
+                    <label class="network-card" data-platform-card="facebook">
+                      <input name="platform" type="checkbox" value="facebook" />
+                      <span class="network-logo facebook-logo">f</span>
+                      <span class="network-copy"><strong>Facebook</strong><small>Texto / foto / Reel</small><em data-network-availability="facebook">Verificando conta...</em></span>
+                      <span class="check-mark">✓</span>
+                    </label>
+                    <label class="network-card" data-platform-card="googleBusiness">
+                      <input name="platform" type="checkbox" value="googleBusiness" />
+                      <span class="network-logo googlebusiness-logo">G</span>
+                      <span class="network-copy"><strong>Google Meu Negócio</strong><small>Texto / foto</small><em data-network-availability="googleBusiness">Verificando conta...</em></span>
+                      <span class="check-mark">✓</span>
+                    </label>
+                  </div>
+
+                  <div class="network-selection-help">
+                    <span>i</span><div><strong>Compatibilidade automática</strong><p>Uma rede pode aparecer indisponível quando não aceita o formato escolhido ou quando a conta ainda não está conectada.</p></div>
+                    <button class="text-btn" data-go-page="connections" type="button">Gerenciar contas</button>
+                  </div>
+
+                  <div class="wizard-actions">
+                    <button class="wizard-secondary" data-wizard-prev type="button"><span>←</span> Voltar</button>
+                    <button class="wizard-primary" data-wizard-next type="button">Configurar publicação <span>→</span></button>
+                  </div>
+                </section>
+
+                <section class="panel wizard-card wizard-step" data-publish-step="3">
+                  <div class="wizard-card-head">
+                    <div class="wizard-step-number">3</div>
+                    <div><p class="eyebrow">AJUSTES</p><h2>Detalhes de cada rede</h2><p>Só aparecem opções que realmente precisam da sua decisão.</p></div>
+                    <span class="chip neutral" id="adjustmentCount">0 redes</span>
+                  </div>
+
+                  <section class="network-variants-studio" id="networkVariantsStudio">
+                    <div class="network-variants-head">
+                      <div><span class="variant-kicker">VERSÕES POR REDE</span><h3>Personalize o texto sem perder o original</h3><p>O conteúdo principal continua intacto. Você pode criar uma versão específica para cada destino.</p></div>
+                      <div class="network-variants-actions"><button class="secondary-action compact" id="generateVariantsBtn" type="button">✦ Gerar versões automáticas</button><button class="text-btn" id="resetVariantsBtn" type="button">Usar original em todas</button></div>
+                    </div>
+                    <div class="variant-info"><span>i</span><p>A geração automática ajusta estrutura e limites de cada rede sem inventar informações novas. Depois você pode editar livremente.</p></div>
+                    <div class="network-variants-list" id="networkVariantsList"><div class="empty-state compact">Selecione pelo menos uma rede para personalizar o conteúdo.</div></div>
+                  </section>
+
+                  <div class="adjustments-list">
+                    <article class="adjustment-card hidden" data-adjustment-card="youtube">
+                      <div class="adjustment-head"><span class="network-logo youtube-logo">▶</span><div><strong>YouTube</strong><small>Visibilidade do vídeo</small></div><span class="status-tag success">1 ajuste</span></div>
+                      <div class="adjustment-body" id="youtubeOptions">
+                        <label class="field compact-field"><span class="field-label"><b>Quem pode assistir?</b></span>
+                          <select id="youtubePrivacy" name="youtubePrivacy"><option value="private">Privado — recomendado para testes</option><option value="unlisted">Não listado</option><option value="public">Público</option></select>
+                        </label>
+                        <div class="friendly-note"><span>i</span><p>Se o projeto do YouTube ainda estiver em análise, a plataforma pode limitar uploads por API a vídeos privados.</p></div>
+                      </div>
+                    </article>
+
+                    <article class="adjustment-card hidden" data-adjustment-card="tiktok">
+                      <div class="adjustment-head"><span class="network-logo tiktok-logo">♪</span><div><strong>TikTok</strong><small>Privacidade, divulgação e interações</small></div><span class="status-tag warning">Requer atenção</span></div>
+                      <div class="adjustment-body" id="tiktokOptions">
+                        <label class="field compact-field"><span class="field-label"><b>Quem pode assistir?</b></span>
+                          <select id="tiktokPrivacy" name="tiktokPrivacy"><option value="">Selecione a privacidade</option></select>
+                          <small id="tiktokCreatorLabel">As opções são consultadas diretamente da conta conectada.</small>
+                        </label>
+                        <label class="toggle-setting compact-toggle tiktok-disclosure-toggle"><span><strong>Conteúdo promocional</strong><small>Ative se o post promove sua empresa ou outra marca.</small></span><input id="tiktokCommercial" type="checkbox"/><span aria-hidden="true" class="toggle-ui"></span></label>
+                        <div class="tiktok-commercial-options hidden" id="tiktokCommercialOptions">
+                          <label class="check-option"><input id="tiktokBrandOrganic" type="checkbox"/><span><b>Minha marca</b><small>Promove você ou seu próprio negócio.</small></span></label>
+                          <label class="check-option"><input id="tiktokBrandContent" type="checkbox"/><span><b>Parceria paga</b><small>Promove uma marca ou terceiro.</small></span></label>
+                        </div>
+                        <label class="check-option tiktok-ai-option"><input id="tiktokAigc" type="checkbox"/><span><b>Conteúdo gerado por IA</b><small>Marque quando a publicação precisar dessa sinalização.</small></span></label>
+                        <div class="tiktok-interactions"><span class="field-label"><b>Interações</b></span>
+                          <label class="check-option"><input id="tiktokAllowComment" type="checkbox"/><span><b>Permitir comentários</b><small id="tiktokCommentHelp">Disponibilidade consultada da conta.</small></span></label>
+                          <label class="check-option" id="tiktokDuetRow"><input id="tiktokAllowDuet" type="checkbox"/><span><b>Permitir Duet</b><small id="tiktokDuetHelp">Somente vídeo.</small></span></label>
+                          <label class="check-option" id="tiktokStitchRow"><input id="tiktokAllowStitch" type="checkbox"/><span><b>Permitir Stitch</b><small id="tiktokStitchHelp">Somente vídeo.</small></span></label>
+                        </div>
+                        <label class="check-option tiktok-consent"><input id="tiktokConsent" type="checkbox"/><span><b>Confirmo o envio ao TikTok</b><small>Confirme antes de publicar para seguir as regras de publicação da plataforma.</small></span></label>
+                      </div>
+                    </article>
+
+                    <article class="adjustment-card hidden" data-adjustment-card="instagram"><div class="adjustment-head"><span class="network-logo instagram-logo">◎</span><div><strong>Instagram</strong><small>Pronto com o conteúdo escolhido</small></div><span class="status-tag success">Automático</span></div><div class="adjustment-auto"><span>✓</span><p>Não há ajustes extras para esta publicação. O sistema prepara a mídia e a legenda automaticamente.</p></div></article>
+                    <article class="adjustment-card hidden" data-adjustment-card="linkedin"><div class="adjustment-head"><span class="network-logo linkedin-logo">in</span><div><strong>LinkedIn</strong><small>Pronto com o conteúdo escolhido</small></div><span class="status-tag success">Automático</span></div><div class="adjustment-auto"><span>✓</span><p>Não há ajustes extras para esta publicação. O conteúdo será enviado para o perfil conectado.</p></div></article>
+                    <article class="adjustment-card hidden" data-adjustment-card="facebook"><div class="adjustment-head"><span class="network-logo facebook-logo">f</span><div><strong>Facebook</strong><small>Página de destino já configurada</small></div><span class="status-tag success">Automático</span></div><div class="adjustment-auto"><span>✓</span><p>O formato será definido automaticamente: texto, foto ou Reel conforme o conteúdo selecionado.</p></div></article>
+                    <article class="adjustment-card hidden" data-adjustment-card="googleBusiness"><div class="adjustment-head"><span class="network-logo googlebusiness-logo">G</span><div><strong>Google Meu Negócio</strong><small>Unidade de destino já configurada</small></div><span class="status-tag success">Automático</span></div><div class="adjustment-auto"><span>✓</span><p>O post será criado na unidade selecionada nas configurações da integração.</p></div></article>
+                  </div>
+
+                  <div class="wizard-actions">
+                    <button class="wizard-secondary" data-wizard-prev type="button"><span>←</span> Voltar</button>
+                    <button class="wizard-primary" data-wizard-next type="button">Revisar publicação <span>→</span></button>
+                  </div>
+                </section>
+
+                <section class="wizard-step" data-publish-step="4">
+                  <div class="review-grid">
+                    <article class="panel wizard-card review-preview-card">
+                      <div class="wizard-card-head compact"><div class="wizard-step-number">4</div><div><p class="eyebrow">REVISÃO</p><h2>Confira antes de publicar</h2><p>Veja uma prévia e confirme se está tudo pronto.</p></div></div>
+                      <div class="preview-platform-tabs" id="previewPlatformTabs"></div>
+                      <div class="post-preview review-post-preview">
+                        <div class="preview-account"><span class="avatar" id="previewAvatar">SP</span><span><strong id="previewAccountName">Seu perfil</strong><small id="previewNetworkName">Prévia da publicação</small></span><span>•••</span></div>
+                        <h3 id="previewTitle">Seu título aparece aqui</h3>
+                        <p id="previewCaption">A legenda da publicação aparece aqui conforme você escreve.</p>
+                        <div class="preview-media empty" id="previewMedia"><span>Preview da mídia</span></div>
+                        <div class="preview-networks" id="previewNetworks"></div>
+                      </div>
+                    </article>
+
+                    <article class="panel wizard-card readiness-card">
+                      <div class="readiness-head"><div><p class="eyebrow">CHECKLIST</p><h2 id="readinessTitle">Preparando revisão...</h2></div><span class="chip neutral" id="preflightSummary">Verificando</span></div>
+                      <div class="preflight-list" id="preflightList"></div>
+                      <div class="publish-progress hidden" id="publishProgress"></div>
+                      <div class="alert hidden" id="publishAlert" role="alert"></div>
+                      <div class="planner-review-actions">
+                        <button class="planner-secondary-action" id="saveDraftBtn" type="button"><span>✎</span><b>Salvar rascunho</b><small>Continuar depois</small></button>
+                        <button class="planner-secondary-action schedule" id="openScheduleBtn" type="button"><span>□</span><b>Agendar</b><small>Escolher data e hora</small></button>
+                      </div>
+                      <button class="publish-btn" id="publishBtn" type="submit">
+                        <span class="publish-btn-main"><span id="publishBtnIcon">↗</span><span id="publishBtnText">Publicar agora</span></span>
+                        <span class="publish-destinations" id="publishDestinations">0 redes</span>
+                      </button>
+                    </article>
+                  </div>
+
+                  <div class="wizard-actions review-actions"><button class="wizard-secondary" data-wizard-prev type="button"><span>←</span> Voltar aos ajustes</button></div>
+                </section>
+              </div>
+
+              <aside class="wizard-side-summary panel" id="wizardSideSummary">
+                <div class="summary-kicker">SUA PUBLICAÇÃO</div>
+                <div class="summary-kind"><span id="summaryKindIcon">≡</span><div><strong id="summaryKind">Texto</strong><small id="summaryMedia">Sem mídia</small></div></div>
+                <div class="summary-block"><span>Conteúdo</span><strong id="summaryTitle">Ainda sem título</strong><small id="summaryCaption">Escreva a legenda para visualizar o resumo.</small></div>
+                <div class="summary-block"><span>Destinos</span><div class="summary-networks" id="summaryNetworks"><small>Nenhuma rede selecionada</small></div></div>
+                <div class="summary-tip" id="summaryTip"><span>1</span><p>Comece escolhendo o formato e escrevendo o conteúdo.</p></div>
+              </aside>
+            </div>
+          </form>
+        </section>
+      </div>
+
+
+      <div class="app-page" data-page="calendar" id="calendar-page">
+        <section class="section-block planner-page">
+          <div class="section-heading planner-heading">
+            <div><p class="eyebrow">PLANEJAMENTO</p><h2>Calendário editorial</h2></div>
+            <div class="planner-heading-actions"><p>Visualize o que está agendado e organize os próximos conteúdos.</p><button class="primary-action compact" type="button" data-go-page="publish"><span>＋</span>Nova publicação</button></div>
+          </div>
+          <div class="planner-stats">
+            <article><span>Agendadas</span><strong id="calendarScheduledMetric">0</strong><small>aguardando publicação</small></article>
+            <article><span>Próximos 7 dias</span><strong id="calendarWeekMetric">0</strong><small>conteúdos na semana</small></article>
+            <article><span>Precisam de atenção</span><strong id="calendarAttentionMetric">0</strong><small>falhas ou revisão manual</small></article>
+          </div>
+          <div class="calendar-layout">
+            <article class="panel calendar-panel">
+              <div class="calendar-toolbar">
+                <button type="button" id="calendarPrevBtn" aria-label="Mês anterior">←</button>
+                <div><strong id="calendarMonthLabel">--</strong><button type="button" id="calendarTodayBtn">Hoje</button></div>
+                <button type="button" id="calendarNextBtn" aria-label="Próximo mês">→</button>
+              </div>
+              <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
+              <div class="editorial-calendar" id="editorialCalendar"><div class="dashboard-loading">Carregando calendário...</div></div>
+            </article>
+            <aside class="panel calendar-agenda">
+              <div class="calendar-agenda-head"><div><p class="eyebrow">PRÓXIMOS</p><h3>Agenda</h3></div><span class="chip neutral" id="calendarAgendaCount">0</span></div>
+              <div id="calendarUpcoming" class="calendar-upcoming-list"><div class="dashboard-loading">Carregando agenda...</div></div>
+            </aside>
+          </div>
+        </section>
+      </div>
+
+      <div class="app-page" data-page="drafts" id="drafts-page">
+        <section class="section-block planner-page">
+          <div class="section-heading planner-heading">
+            <div><p class="eyebrow">CONTEÚDO</p><h2>Rascunhos</h2></div>
+            <div class="planner-heading-actions"><p>Continue conteúdos salvos e revise itens que não foram publicados.</p><button class="primary-action compact" type="button" data-go-page="publish"><span>＋</span>Novo conteúdo</button></div>
+          </div>
+          <div class="planner-stats">
+            <article><span>Rascunhos</span><strong id="draftMetric">0</strong><small>salvos para continuar depois</small></article>
+            <article><span>Com mídia</span><strong id="draftMediaMetric">0</strong><small>arquivos preservados</small></article>
+            <article><span>Precisam de revisão</span><strong id="draftAttentionMetric">0</strong><small>falha, parcial ou interrupção</small></article>
+          </div>
+          <article class="panel drafts-panel">
+            <div class="drafts-toolbar"><label class="history-search"><span>⌕</span><input id="draftSearch" type="search" autocomplete="off" placeholder="Buscar rascunhos..." aria-label="Buscar rascunhos" /></label><select id="draftStatusFilter" aria-label="Filtrar rascunhos"><option value="all">Todos</option><option value="draft">Rascunhos</option><option value="failed">Com falha</option><option value="partial">Parciais</option><option value="needs_review">Revisão necessária</option></select></div>
+            <div class="draft-list" id="draftList"><div class="dashboard-loading">Carregando rascunhos...</div></div>
+          </article>
+        </section>
+      </div>
+
+      <div class="app-page" data-page="templates" id="templates-page">
+        <section class="section-block templates-page">
+          <div class="section-heading planner-heading">
+            <div><p class="eyebrow">BIBLIOTECA</p><h2>Templates de publicação</h2></div>
+            <div class="planner-heading-actions"><p>Reutilize estruturas, textos e versões específicas por rede sem começar do zero.</p><button class="primary-action compact" type="button" data-go-page="publish"><span>＋</span>Nova publicação</button></div>
+          </div>
+          <div class="planner-stats template-stats">
+            <article><span>Templates</span><strong id="templateMetric">0</strong><small>modelos salvos</small></article>
+            <article><span>Com variações</span><strong id="templateVariantMetric">0</strong><small>possuem texto específico por rede</small></article>
+            <article><span>Redes cobertas</span><strong id="templateNetworkMetric">0</strong><small>destinos usados nos modelos</small></article>
+          </div>
+          <article class="panel templates-panel">
+            <div class="templates-toolbar"><label class="history-search"><span>⌕</span><input id="templateSearch" type="search" autocomplete="off" placeholder="Buscar templates..." aria-label="Buscar templates" /></label><button class="secondary-action compact" id="templateFromCurrentBtn" type="button">☆ Salvar publicação atual</button></div>
+            <div class="template-list" id="templateList"><div class="dashboard-loading">Carregando templates...</div></div>
+          </article>
+        </section>
+      </div>
+
+      <div class="app-page" data-page="publications" id="publications-page">
+        <section class="publications-overview section-block" id="history-section">
+          <div class="section-heading publications-heading">
+            <div><p class="eyebrow">ATIVIDADE</p><h2>Suas publicações</h2></div>
+            <p>Encontre um envio rapidamente, confira o resultado em cada rede e reutilize conteúdos anteriores.</p>
+          </div>
+
+          <div class="publication-stats" aria-label="Resumo das publicações">
+            <article><span>Total</span><strong id="historyTotalMetric">0</strong><small>publicações registradas</small></article>
+            <article><span>Concluídas</span><strong id="historySuccessMetric">0</strong><small>sem falhas nas redes</small></article>
+            <article><span>Com atenção</span><strong id="historyAttentionMetric">0</strong><small>com pelo menos uma falha</small></article>
+          </div>
+
+          <div class="panel publications-panel">
+            <div class="publications-toolbar">
+              <label class="history-search">
+                <span>⌕</span>
+                <input id="historySearch" type="search" autocomplete="off" placeholder="Buscar por título ou legenda..." aria-label="Buscar publicações" />
+              </label>
+              <select id="historyPlatformFilter" aria-label="Filtrar por rede">
+                <option value="all">Todas as redes</option>
+                <option value="youtube">YouTube</option>
+                <option value="instagram">Instagram</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="tiktok">TikTok</option>
+                <option value="facebook">Facebook</option>
+                <option value="googleBusiness">Google Meu Negócio</option>
+              </select>
+              <select id="historyStatusFilter" aria-label="Filtrar por status">
+                <option value="all">Todos os status</option>
+                <option value="success">Concluídas</option>
+                <option value="partial">Parciais</option>
+                <option value="error">Com falha</option>
+                <option value="demo">Simuladas</option>
+              </select>
+              <select id="historyKindFilter" aria-label="Filtrar por formato">
+                <option value="all">Todos os formatos</option>
+                <option value="text">Texto</option>
+                <option value="image">Imagem</option>
+                <option value="video">Vídeo</option>
+              </select>
+              <button class="filters-clear hidden" id="clearHistoryFilters" type="button">Limpar filtros</button>
+            </div>
+            <div class="publications-list-head"><span id="historyResultCount">0 publicações</span><span>Últimos 100 registros</span></div>
+            <div class="history-list" id="history"><div class="empty-state">Nenhuma publicação ainda.</div></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="app-page" data-page="connections" id="connections-page">
+        <section class="section-block" id="connections">
+          <div class="section-heading connections-heading">
+            <div><p class="eyebrow">CONTAS</p><h2>Contas conectadas</h2></div>
+            <div class="connections-heading-actions">
+              <p>Conecte perfis e escolha a Página ou unidade usada nas publicações. Credenciais técnicas continuam isoladas na Administração.</p>
+              <button class="text-btn refresh-connections" id="connectionsRefreshBtn" type="button">↻ Atualizar status</button>
+            </div>
+          </div>
+          <div class="connections-summary" id="connectionsSummary"></div>
+          <div class="connections-grid" id="connectionsGrid"><div class="dashboard-loading">Carregando contas...</div></div>
+        </section>
+      </div>
+
+      <div class="app-page hidden" data-page="admin" id="admin-page" data-admin-only>
+        <div class="admin-warning">
+          <span>⚙</span>
+          <div>
+            <strong>Administração separada do uso diário</strong>
+            <p>Credenciais, URLs, callbacks e diagnóstico ficam concentrados aqui. O restante do Social Publisher continua simples para quem só precisa publicar.</p>
+          </div>
+        </div>
+
+        <div class="admin-tabs" role="tablist" aria-label="Seções da administração">
+          <button class="admin-tab active" type="button" role="tab" aria-selected="true" data-admin-tab-target="integrations"><span>◎</span><b>Integrações</b><small>APIs e credenciais</small></button>
+          <button class="admin-tab" type="button" role="tab" aria-selected="false" data-admin-tab-target="system"><span>⚙</span><b>Sistema</b><small>Ambiente e URLs</small></button>
+          <button class="admin-tab" type="button" role="tab" aria-selected="false" data-admin-tab-target="diagnostics"><span>⌁</span><b>Diagnóstico</b><small>Saúde e callbacks</small></button>
+        </div>
+
+        <div class="alert hidden" id="settingsAccessAlert" role="alert"></div>
+
+        <form class="settings-form admin-settings-form" id="settingsForm" novalidate="">
+          <section class="admin-tab-panel active" data-admin-tab-panel="integrations" id="admin-integrations-panel">
+            <div class="section-heading settings-heading admin-section-heading">
+              <div><p class="eyebrow">INTEGRAÇÕES</p><h2>APIs das redes sociais</h2></div>
+              <p>Abra somente a rede que deseja configurar. Cada integração é salva de forma independente.</p>
+            </div>
+
+            <div class="admin-integration-summary" id="adminIntegrationSummary">
+              <div class="dashboard-loading">Carregando integrações...</div>
+            </div>
+
+            <div class="settings-network-grid admin-integrations-grid">
+              <details class="panel settings-network-card admin-integration-card" data-platform-settings="youtube">
+                <summary class="admin-integration-summary-row">
+                  <div class="admin-integration-title"><span class="connection-logo youtube-logo">▶</span><div><p class="eyebrow">GOOGLE CLOUD</p><h3>YouTube</h3><small id="youtubeAdminConnectionText">Verificando conta...</small></div></div>
+                  <div class="admin-integration-state"><span class="status-tag neutral" id="youtubeSecretState">Não configurado</span><span class="admin-chevron">⌄</span></div>
+                </summary>
+                <div class="admin-integration-body">
+                  <div class="settings-fields">
+                    <label class="field compact-field"><span class="field-label"><b>Client ID</b></span><input autocomplete="off" id="settingsYoutubeClientId" placeholder="...apps.googleusercontent.com" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>Client Secret</b><em>protegido</em></span><div class="secret-field"><input autocomplete="new-password" id="settingsYoutubeClientSecret" placeholder="Cole um novo segredo" type="password"/><button aria-label="Mostrar ou ocultar segredo" class="reveal-btn" data-reveal="settingsYoutubeClientSecret" type="button">👁</button></div><small id="youtubeSecretHelp">Deixe em branco para manter o segredo salvo.</small></label>
+                    <div class="callback-box"><span>Callback OAuth</span><div><code id="youtubeCallback">--</code><button class="copy-btn" data-copy="youtubeCallback" type="button">Copiar</button></div></div>
+                    <label class="field compact-field"><span class="field-label"><b>Bloco de upload</b><em>MB</em></span><input id="settingsYoutubeChunkMb" max="64" min="1" step="1" type="number" value="8"/></label>
+                  </div>
+                  <div class="settings-card-footer admin-card-actions"><a class="docs-link" href="https://console.cloud.google.com/apis/credentials" rel="noreferrer" target="_blank">Google Cloud ↗</a><div><button class="danger-text-btn" data-clear-credentials="youtube" type="button">Limpar</button><button class="secondary-action admin-save-button" data-save-settings="youtube" type="button">Salvar YouTube</button></div></div>
+                </div>
+              </details>
+
+              <details class="panel settings-network-card admin-integration-card" data-platform-settings="instagram">
+                <summary class="admin-integration-summary-row">
+                  <div class="admin-integration-title"><span class="connection-logo instagram-logo">◎</span><div><p class="eyebrow">INSTAGRAM LOGIN</p><h3>Instagram</h3><small id="instagramAdminConnectionText">Verificando conta...</small></div></div>
+                  <div class="admin-integration-state"><span class="status-tag neutral" id="instagramSecretState">Não configurado</span><span class="admin-chevron">⌄</span></div>
+                </summary>
+                <div class="admin-integration-body">
+                  <div class="settings-fields">
+                    <label class="field compact-field"><span class="field-label"><b>Instagram App ID</b></span><input autocomplete="off" id="settingsInstagramAppId" placeholder="App ID do Instagram" type="text"/><small>Use o ID do produto configurado para “API setup with Instagram login”.</small></label>
+                    <label class="field compact-field"><span class="field-label"><b>Instagram App Secret</b><em>protegido</em></span><div class="secret-field"><input autocomplete="new-password" id="settingsInstagramAppSecret" placeholder="Cole um novo segredo" type="password"/><button aria-label="Mostrar ou ocultar segredo" class="reveal-btn" data-reveal="settingsInstagramAppSecret" type="button">👁</button></div><small id="instagramSecretHelp">Deixe em branco para manter o segredo salvo.</small></label>
+                    <div class="callback-box"><span>Callback OAuth</span><div><code id="instagramCallback">--</code><button class="copy-btn" data-copy="instagramCallback" type="button">Copiar</button></div></div>
+                    <label class="field compact-field"><span class="field-label"><b>Versão Instagram Graph API</b></span><input id="settingsMetaVersion" placeholder="v26.0" type="text"/></label>
+                    <div class="scope-box"><span>Scopes usados</span><code>instagram_business_basic<br/>instagram_business_content_publish</code><small>Conta Instagram Business ou Creator.</small></div>
+                    <details class="settings-help"><summary>Guia rápido de configuração</summary><ol><li>Abra o produto Instagram no Meta Developers.</li><li>Escolha <b>API setup with Instagram login</b>.</li><li>Cadastre o callback exibido acima.</li><li>Use uma conta Business ou Creator para o teste.</li></ol></details>
+                  </div>
+                  <div class="settings-card-footer admin-card-actions"><a class="docs-link" href="https://developers.facebook.com/apps/" rel="noreferrer" target="_blank">Meta Developers ↗</a><div><button class="danger-text-btn" data-clear-credentials="instagram" type="button">Limpar</button><button class="secondary-action admin-save-button" data-save-settings="instagram" type="button">Salvar Instagram</button></div></div>
+                </div>
+              </details>
+
+              <details class="panel settings-network-card admin-integration-card" data-platform-settings="linkedin">
+                <summary class="admin-integration-summary-row">
+                  <div class="admin-integration-title"><span class="connection-logo linkedin-logo">in</span><div><p class="eyebrow">LINKEDIN DEVELOPERS</p><h3>LinkedIn</h3><small id="linkedinAdminConnectionText">Verificando conta...</small></div></div>
+                  <div class="admin-integration-state"><span class="status-tag neutral" id="linkedinSecretState">Não configurado</span><span class="admin-chevron">⌄</span></div>
+                </summary>
+                <div class="admin-integration-body">
+                  <div class="settings-fields">
+                    <label class="field compact-field"><span class="field-label"><b>Client ID</b></span><input autocomplete="off" id="settingsLinkedinClientId" placeholder="Client ID do LinkedIn" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>Client Secret</b><em>protegido</em></span><div class="secret-field"><input autocomplete="new-password" id="settingsLinkedinClientSecret" placeholder="Cole um novo segredo" type="password"/><button aria-label="Mostrar ou ocultar segredo" class="reveal-btn" data-reveal="settingsLinkedinClientSecret" type="button">👁</button></div><small id="linkedinSecretHelp">Deixe em branco para manter o segredo salvo.</small></label>
+                    <div class="callback-box"><span>Callback OAuth</span><div><code id="linkedinCallback">--</code><button class="copy-btn" data-copy="linkedinCallback" type="button">Copiar</button></div></div>
+                    <label class="field compact-field"><span class="field-label"><b>Scopes</b></span><input id="settingsLinkedinScopes" placeholder="openid profile w_member_social" type="text"/></label>
+                    <div class="settings-mini-grid"><label class="field compact-field"><span class="field-label"><b>Versão API</b></span><input id="settingsLinkedinVersion" placeholder="202609" type="text"/></label><label class="field compact-field"><span class="field-label"><b>Author URN</b><em>opcional</em></span><input id="settingsLinkedinAuthorUrn" placeholder="urn:li:organization:..." type="text"/></label></div>
+                  </div>
+                  <div class="settings-card-footer admin-card-actions"><a class="docs-link" href="https://www.linkedin.com/developers/apps" rel="noreferrer" target="_blank">LinkedIn Developers ↗</a><div><button class="danger-text-btn" data-clear-credentials="linkedin" type="button">Limpar</button><button class="secondary-action admin-save-button" data-save-settings="linkedin" type="button">Salvar LinkedIn</button></div></div>
+                </div>
+              </details>
+
+              <details class="panel settings-network-card admin-integration-card" data-platform-settings="tiktok">
+                <summary class="admin-integration-summary-row">
+                  <div class="admin-integration-title"><span class="connection-logo tiktok-logo">♪</span><div><p class="eyebrow">TIKTOK FOR DEVELOPERS</p><h3>TikTok</h3><small id="tiktokAdminConnectionText">Verificando conta...</small></div></div>
+                  <div class="admin-integration-state"><span class="status-tag neutral" id="tiktokSecretState">Não configurado</span><span class="admin-chevron">⌄</span></div>
+                </summary>
+                <div class="admin-integration-body">
+                  <div class="settings-fields">
+                    <label class="field compact-field"><span class="field-label"><b>Client Key</b></span><input autocomplete="off" id="settingsTiktokClientKey" placeholder="Client Key do TikTok" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>Client Secret</b><em>protegido</em></span><div class="secret-field"><input autocomplete="new-password" id="settingsTiktokClientSecret" placeholder="Cole um novo segredo" type="password"/><button aria-label="Mostrar ou ocultar segredo" class="reveal-btn" data-reveal="settingsTiktokClientSecret" type="button">👁</button></div><small id="tiktokSecretHelp">Deixe em branco para manter o segredo salvo.</small></label>
+                    <div class="callback-box"><span>Callback OAuth — HTTPS obrigatório</span><div><code id="tiktokCallback">--</code><button class="copy-btn" data-copy="tiktokCallback" type="button">Copiar</button></div></div>
+                    <label class="field compact-field"><span class="field-label"><b>Scopes</b></span><input id="settingsTiktokScopes" placeholder="user.info.basic,video.publish" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>Prefixo de mídia verificado</b><em>fotos</em></span><input id="settingsTiktokVerifiedMediaBaseUrl" placeholder="https://cdn.suaempresa.com" type="url"/><small>Usado em fotos via PULL_FROM_URL. O domínio/prefixo precisa estar verificado no TikTok.</small></label>
+                    <details class="settings-help"><summary>Guia rápido de configuração</summary><ol><li>Ative Login Kit + Content Posting API.</li><li>Habilite Direct Post e solicite <b>video.publish</b>.</li><li>Cadastre o callback HTTPS acima.</li><li>Para fotos, verifique o domínio/prefixo de mídia.</li></ol></details>
+                  </div>
+                  <div class="settings-card-footer admin-card-actions"><a class="docs-link" href="https://developers.tiktok.com/apps/" rel="noreferrer" target="_blank">TikTok Developers ↗</a><div><button class="danger-text-btn" data-clear-credentials="tiktok" type="button">Limpar</button><button class="secondary-action admin-save-button" data-save-settings="tiktok" type="button">Salvar TikTok</button></div></div>
+                </div>
+              </details>
+
+              <details class="panel settings-network-card admin-integration-card" data-platform-settings="facebook">
+                <summary class="admin-integration-summary-row">
+                  <div class="admin-integration-title"><span class="connection-logo facebook-logo">f</span><div><p class="eyebrow">META DEVELOPERS</p><h3>Facebook</h3><small id="facebookAdminConnectionText">Verificando conta...</small></div></div>
+                  <div class="admin-integration-state"><span class="status-tag neutral" id="facebookSecretState">Não configurado</span><span class="admin-chevron">⌄</span></div>
+                </summary>
+                <div class="admin-integration-body">
+                  <div class="settings-fields">
+                    <label class="field compact-field"><span class="field-label"><b>Facebook App ID</b></span><input autocomplete="off" id="settingsFacebookAppId" placeholder="App ID do Meta Developers" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>App Secret</b><em>protegido</em></span><div class="secret-field"><input autocomplete="new-password" id="settingsFacebookAppSecret" placeholder="Cole um novo segredo" type="password"/><button aria-label="Mostrar ou ocultar segredo" class="reveal-btn" data-reveal="settingsFacebookAppSecret" type="button">👁</button></div><small id="facebookSecretHelp">Deixe em branco para manter o segredo salvo.</small></label>
+                    <div class="callback-box"><span>Callback OAuth</span><div><code id="facebookCallback">--</code><button class="copy-btn" data-copy="facebookCallback" type="button">Copiar</button></div></div>
+                    <label class="field compact-field"><span class="field-label"><b>Versão Graph API</b></span><input id="settingsFacebookVersion" placeholder="v26.0" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>Scopes</b></span><input id="settingsFacebookScopes" placeholder="pages_show_list,pages_read_engagement,pages_manage_posts" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>Página de destino</b></span><select id="settingsFacebookPageId"><option value="">Conecte o Facebook para listar páginas</option></select><small>O mesmo destino também pode ser trocado em Contas conectadas.</small></label>
+                  </div>
+                  <div class="settings-card-footer admin-card-actions"><a class="docs-link" href="https://developers.facebook.com/apps/" rel="noreferrer" target="_blank">Meta Developers ↗</a><div><button class="danger-text-btn" data-clear-credentials="facebook" type="button">Limpar</button><button class="secondary-action admin-save-button" data-save-settings="facebook" type="button">Salvar Facebook</button></div></div>
+                </div>
+              </details>
+
+              <details class="panel settings-network-card admin-integration-card" data-platform-settings="googleBusiness">
+                <summary class="admin-integration-summary-row">
+                  <div class="admin-integration-title"><span class="connection-logo googlebusiness-logo">G</span><div><p class="eyebrow">GOOGLE BUSINESS PROFILE</p><h3>Google Meu Negócio</h3><small id="googleBusinessAdminConnectionText">Verificando conta...</small></div></div>
+                  <div class="admin-integration-state"><span class="status-tag neutral" id="googleBusinessSecretState">Não configurado</span><span class="admin-chevron">⌄</span></div>
+                </summary>
+                <div class="admin-integration-body">
+                  <div class="settings-fields">
+                    <label class="toggle-setting compact-toggle"><span><strong>Usar credenciais do YouTube</strong><small>Reutiliza o mesmo OAuth Client do Google. A autorização da conta continua separada.</small></span><input checked="" id="settingsGoogleBusinessUseYoutube" type="checkbox"/><span aria-hidden="true" class="toggle-ui"></span></label>
+                    <label class="field compact-field"><span class="field-label"><b>Client ID próprio</b><em>opcional</em></span><input autocomplete="off" id="settingsGoogleBusinessClientId" placeholder="...apps.googleusercontent.com" type="text"/></label>
+                    <label class="field compact-field"><span class="field-label"><b>Client Secret próprio</b><em>protegido</em></span><div class="secret-field"><input autocomplete="new-password" id="settingsGoogleBusinessClientSecret" placeholder="Cole um novo segredo" type="password"/><button aria-label="Mostrar ou ocultar segredo" class="reveal-btn" data-reveal="settingsGoogleBusinessClientSecret" type="button">👁</button></div><small id="googleBusinessSecretHelp">Você pode reutilizar o OAuth do YouTube.</small></label>
+                    <div class="callback-box"><span>Callback OAuth</span><div><code id="googleBusinessCallback">--</code><button class="copy-btn" data-copy="googleBusinessCallback" type="button">Copiar</button></div></div>
+                    <label class="field compact-field"><span class="field-label"><b>Unidade de destino</b></span><select id="settingsGoogleBusinessLocation"><option value="">Conecte o Google para listar unidades</option></select><small>O mesmo destino também pode ser trocado em Contas conectadas.</small></label>
+                    <div class="scope-box"><span>Scope usado</span><code>https://www.googleapis.com/auth/business.manage</code><small>O projeto Google precisa ser aprovado para acesso às Business Profile APIs.</small></div>
+                  </div>
+                  <div class="settings-card-footer admin-card-actions"><a class="docs-link" href="https://developers.google.com/my-business/content/basic-setup" rel="noreferrer" target="_blank">Documentação Google ↗</a><div><button class="danger-text-btn" data-clear-credentials="googleBusiness" type="button">Limpar</button><button class="secondary-action admin-save-button" data-save-settings="googleBusiness" type="button">Salvar Google</button></div></div>
+                </div>
+              </details>
+            </div>
+          </section>
+
+          <section class="admin-tab-panel" data-admin-tab-panel="system" id="admin-system-panel">
+            <div class="section-heading settings-heading admin-section-heading">
+              <div><p class="eyebrow">SISTEMA</p><h2>Ambiente e endereços públicos</h2></div>
+              <p>Configurações gerais usadas pelo gateway, OAuth e entrega de mídia para as redes.</p>
+            </div>
+
+            <article class="panel settings-general-card admin-system-card">
+              <div class="settings-card-head">
+                <div><span class="settings-icon">⚙</span><div><p class="eyebrow">AMBIENTE</p><h3>Funcionamento do Social Publisher</h3></div></div>
+                <span class="status-tag warning" id="settingsModeBadge">Demo</span>
+              </div>
+              <div class="settings-general-grid admin-system-grid">
+                <label class="toggle-setting"><span><strong>Modo Demo</strong><small>Simula publicações sem chamar APIs externas.</small></span><input checked="" id="settingsDemoMode" type="checkbox"/><span aria-hidden="true" class="toggle-ui"></span></label>
+                <label class="field compact-field"><span class="field-label"><b>URL pública do aplicativo</b><em>OAuth</em></span><input autocomplete="off" id="settingsAppBaseUrl" placeholder="https://workspacecasadoads.com.br/api/social" type="url"/><small>Base usada para gerar todos os callbacks OAuth.</small></label>
+                <label class="field compact-field"><span class="field-label"><b>URL pública de mídia</b><em>uploads</em></span><input autocomplete="off" id="settingsPublicBaseUrl" placeholder="https://workspacecasadoads.com.br/api/social" type="url"/><small>Usada quando uma plataforma precisa buscar a mídia por HTTPS.</small></label>
+                <label class="field compact-field"><span class="field-label"><b>Limite máximo de upload</b><em>MB</em></span><input id="settingsMaxUploadMb" min="1" max="4096" step="1" type="number" value="4096"/><small>Limite interno do Social Publisher. Cada rede ainda aplica seus próprios limites.</small></label>
+              </div>
+              <div class="security-note"><span>🔒</span><div><strong>Segredos continuam somente no backend</strong><p>Client Secrets e tokens OAuth não são enviados de volta ao navegador. Esta tela recebe somente indicadores de que a credencial está salva.</p></div></div>
+              <div class="admin-system-actions"><div><strong>As alterações gerais passam a valer imediatamente.</strong><span>Ao mudar a URL do aplicativo, copie novamente os callbacks das integrações.</span></div><button class="primary-action" id="saveSystemSettingsBtn" data-save-settings="general" type="button"><span>✓</span>Salvar sistema</button></div>
+            </article>
+
+            <div class="admin-public-links-grid">
+              <article class="panel admin-public-link-card"><span>◉</span><div><strong>Página pública</strong><code id="adminAboutUrl">--</code></div><button class="copy-btn" data-copy="adminAboutUrl" type="button">Copiar</button></article>
+              <article class="panel admin-public-link-card"><span>↗</span><div><strong>Aplicativo</strong><code id="adminPublicAppUrl">--</code></div><button class="copy-btn" data-copy="adminPublicAppUrl" type="button">Copiar</button></article>
+              <article class="panel admin-public-link-card"><span>§</span><div><strong>Termos de Serviço</strong><code id="adminTermsUrl">--</code></div><button class="copy-btn" data-copy="adminTermsUrl" type="button">Copiar</button></article>
+              <article class="panel admin-public-link-card"><span>◈</span><div><strong>Política de Privacidade</strong><code id="adminPrivacyUrl">--</code></div><button class="copy-btn" data-copy="adminPrivacyUrl" type="button">Copiar</button></article>
+            </div>
+          </section>
+        </form>
+
+        <section class="admin-tab-panel" data-admin-tab-panel="diagnostics" id="admin-diagnostics-panel">
+          <div class="section-heading settings-heading admin-section-heading">
+            <div><p class="eyebrow">DIAGNÓSTICO</p><h2>Saúde do sistema</h2></div>
+            <div class="diagnostics-actions"><button class="text-btn" id="copyDiagnosticsBtn" type="button">Copiar diagnóstico</button><button class="secondary-action" id="runDiagnosticsBtn" type="button">↻ Verificar agora</button></div>
+          </div>
+          <div class="diagnostics-summary" id="diagnosticsSummary"><div class="dashboard-loading">Aguardando diagnóstico...</div></div>
+          <div class="diagnostics-layout">
+            <article class="panel diagnostics-panel"><div class="diagnostics-panel-head"><div><p class="eyebrow">SISTEMA</p><h3>Serviços e ambiente</h3></div></div><div class="diagnostics-list" id="diagnosticsChecks"></div></article>
+            <article class="panel diagnostics-panel"><div class="diagnostics-panel-head"><div><p class="eyebrow">REDES</p><h3>Integrações</h3></div></div><div class="diagnostics-list" id="diagnosticsPlatforms"></div></article>
+          </div>
+          <article class="panel diagnostics-panel diagnostics-callback-panel"><div class="diagnostics-panel-head"><div><p class="eyebrow">OAUTH</p><h3>Callbacks cadastráveis</h3></div><small>Nenhum segredo ou token é exibido aqui.</small></div><div class="diagnostics-callbacks" id="diagnosticsCallbacks"></div></article>
+          <div class="version-bar admin-version-bar"><span>Documentação verificada: <b id="verifiedDate">--</b></span><span>Instagram Graph: <b id="metaVersion">--</b></span><span>LinkedIn: <b id="linkedinVersion">--</b></span><a href="README.txt" rel="noreferrer" target="_blank">Abrir guia técnico ↗</a></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="template-dialog" id="templateSaveDialog">
+    <form method="dialog" class="template-dialog-card" id="templateSaveForm">
+      <div class="schedule-dialog-head"><span>☆</span><div><p class="eyebrow">TEMPLATE</p><h2>Salvar como template</h2><p>O texto, destinos e ajustes serão salvos. Arquivos de mídia não entram no template.</p></div><button class="dialog-close" value="cancel" type="submit" aria-label="Fechar">×</button></div>
+      <label class="field"><span class="field-label"><b>Nome do template</b><em>obrigatório</em></span><input id="templateNameInput" maxlength="100" autocomplete="off" placeholder="Ex.: Post institucional com 4 redes" required /></label>
+      <label class="field"><span class="field-label"><b>Descrição</b><em>opcional</em></span><textarea id="templateDescriptionInput" maxlength="500" rows="3" placeholder="Quando usar este template..."></textarea></label>
+      <div class="template-dialog-summary" id="templateSaveSummary"></div>
+      <div class="schedule-dialog-actions"><button class="wizard-secondary" value="cancel" type="submit">Cancelar</button><button class="wizard-primary" id="templateSaveConfirmBtn" value="default" type="button">Salvar template <span>→</span></button></div>
+    </form>
+  </dialog>
+
+  <dialog class="template-dialog" id="templatePickerDialog">
+    <form method="dialog" class="template-dialog-card template-picker-card">
+      <div class="schedule-dialog-head"><span>◫</span><div><p class="eyebrow">BIBLIOTECA</p><h2>Usar um template</h2><p>Escolha um modelo para preencher a publicação atual.</p></div><button class="dialog-close" value="cancel" type="submit" aria-label="Fechar">×</button></div>
+      <label class="history-search template-dialog-search"><span>⌕</span><input id="templatePickerSearch" type="search" autocomplete="off" placeholder="Buscar template..." /></label>
+      <div class="template-picker-list" id="templatePickerList"></div>
+    </form>
+  </dialog>
+
+  <dialog class="schedule-dialog" id="scheduleDialog">
+    <form method="dialog" class="schedule-dialog-card" id="scheduleForm">
+      <div class="schedule-dialog-head"><span>□</span><div><p class="eyebrow">AGENDAMENTO</p><h2>Quando publicar?</h2><p>O servidor fará a publicação mesmo que esta página esteja fechada.</p></div><button class="dialog-close" value="cancel" type="submit" aria-label="Fechar">×</button></div>
+      <label class="field"><span class="field-label"><b>Data e horário</b><em>horário local</em></span><input id="scheduleDateTime" type="datetime-local" required /></label>
+      <div class="schedule-summary" id="scheduleSummary"></div>
+      <div class="schedule-warning"><span>i</span><p>As contas precisam continuar autorizadas no momento do envio. Se alguma rede recusar a publicação, o item ficará marcado para revisão.</p></div>
+      <div class="schedule-dialog-actions"><button class="wizard-secondary" value="cancel" type="submit">Cancelar</button><button class="wizard-primary" id="scheduleConfirmBtn" value="default" type="button">Agendar publicação <span>→</span></button></div>
+    </form>
+  </dialog>
+
+  <div class="app-boot-overlay" id="appBootOverlay" role="status" aria-live="polite">
+    <div class="app-boot-card">
+      <span class="app-boot-spinner" id="appBootSpinner" aria-hidden="true"></span>
+      <strong id="appBootTitle">Preparando o Social Publisher</strong>
+      <p id="appBootMessage">Carregando contas, publicações e planejamento...</p>
+      <button class="primary-action hidden" id="appBootRetryBtn" type="button">Tentar novamente</button>
+    </div>
+  </div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+[
+  {
+    "id": "39261ae3-dc00-4dc4-a4cf-6b34aab6fae3",
+    "createdAt": "2026-09-25T14:57:13.465Z",
+    "durationMs": 1975,
+    "title": "TESTE",
+    "caption": "TESTE",
+    "networkContent": {},
+    "mediaKind": "video",
+    "originalFileName": "2026-09-25 10-56-31.mp4",
+    "fileSize": 1374519,
+    "mediaUrl": null,
+    "platforms": [
+      "youtube"
+    ],
+    "results": {
+      "youtube": {
+        "status": "success",
+        "id": "OW1zYK_gHU8",
+        "url": "https://www.youtube.com/watch?v=OW1zYK_gHU8",
+        "requestId": "AP6rU801jyxN0FudsxfmK0YPQL1fJOBTBXZO206mP6g_3KoS-XwepAAjA0Ngk1ZG8dbPsfNrRVHq9L3ncCe80gI1eUeu7YtyG48fbLEFNcW50yM",
+        "durationMs": 1974
+      }
+    },
+    "demoMode": false,
+    "source": "manual",
+    "plannerId": null,
+    "createdBy": {
+      "id": 20,
+      "name": "fefefe",
+      "email": "testandopubli2@gmail.com"
+    }
+  },
+  {
+    "id": "1e9d11f9-fbda-4915-8fad-00e350ae1227",
+    "createdAt": "2026-09-25T14:55:37.508Z",
+    "durationMs": 2038,
+    "title": "teste",
+    "caption": "teste",
+    "networkContent": {},
+    "mediaKind": "video",
+    "originalFileName": "2026-09-25 10-56-31.mp4",
+    "fileSize": 1374519,
+    "mediaUrl": null,
+    "platforms": [
+      "youtube"
+    ],
+    "results": {
+      "youtube": {
+        "status": "success",
+        "id": "YVjA70ucFLU",
+        "url": "https://www.youtube.com/watch?v=YVjA70ucFLU",
+        "requestId": "AP6rU822YVSkfNFvMz_yB0ZlHuqDG0d2NmJy4RLstgoibMXQwIHw5sjObVvXhO2zBOzH1YTAgM3XPkBzMokT01jB7Qe7TYaE55UJWBqk6adlW2E",
+        "durationMs": 2036
+      }
+    },
+    "demoMode": false,
+    "source": "manual",
+    "plannerId": null,
+    "createdBy": {
+      "id": 20,
+      "name": "fefefe",
+      "email": "testandopubli2@gmail.com"
+    }
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "name": "social-publisher-mvp",
+  "version": "0.5.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/providers.js && node --check src/store.js && node --check src/config.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "axios": "1.12.2",
+    "dotenv": "17.2.2",
+    "express": "5.1.0",
+    "multer": "2.0.2"
+  }
+}
