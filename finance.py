@@ -337,6 +337,17 @@ def register_finance(app, engine, get_db, get_current_user):
             raise HTTPException(409, 'Já existe um plano com esse nome.')
         return plan_dict(row)
 
+    @router.delete('/plans/{plan_id}', status_code=204)
+    def delete_plan(plan_id: int, db=Depends(get_db), user=Depends(finance_user)):
+        row = db.query(FinancePlan).filter_by(id=plan_id, owner_id=user.id).first()
+        if not row:
+            raise HTTPException(404, 'Plano não encontrado.')
+        if db.query(FinanceContract.id).filter(FinanceContract.plan_id == row.id).first():
+            raise HTTPException(409, 'Este plano está vinculado a contrato(s). Exclua os contratos vinculados antes de apagar o plano.')
+        db.delete(row)
+        db.commit()
+        return None
+
     @router.get('/overview')
     def overview(db=Depends(get_db), user=Depends(finance_user)):
         contracts = db.query(FinanceContract).filter_by(owner_id=user.id).order_by(FinanceContract.id.desc()).all()
@@ -412,6 +423,16 @@ def register_finance(app, engine, get_db, get_current_user):
         db.commit()
         return contract_dict(db, row)
 
+    @router.delete('/contracts/{contract_id}', status_code=204)
+    def delete_contract(contract_id: int, db=Depends(get_db), user=Depends(finance_user)):
+        row = own_contract(db, user, contract_id)
+        # As parcelas concentram recebimentos e comissões. Removê-las primeiro evita
+        # registros órfãos e funciona mesmo quando o SQLite está com FK enforcement ativo.
+        db.query(FinanceInstallment).filter_by(contract_id=row.id).delete(synchronize_session=False)
+        db.delete(row)
+        db.commit()
+        return None
+
     @router.post('/installments/{installment_id}/receive')
     def receive(installment_id: int, data: PaymentInput, db=Depends(get_db), user=Depends(finance_user)):
         row = own_installment(db, user, installment_id)
@@ -442,6 +463,30 @@ def register_finance(app, engine, get_db, get_current_user):
         db.refresh(row)
         if not changed and row.commission_paid_on != data.paid_on.isoformat():
             raise HTTPException(409, 'O estado desta comissão mudou. Atualize a tela.')
+        return installment_dict(row)
+
+    @router.delete('/installments/{installment_id}/commission-paid')
+    def delete_commission_payment(installment_id: int, db=Depends(get_db), user=Depends(finance_user)):
+        row = own_installment(db, user, installment_id)
+        if not row.commission_paid_on:
+            raise HTTPException(409, 'Esta comissão ainda não foi marcada como paga.')
+        row.commission_paid_on = None
+        db.commit()
+        db.refresh(row)
+        return installment_dict(row)
+
+    @router.delete('/installments/{installment_id}/receive')
+    def delete_receipt(installment_id: int, db=Depends(get_db), user=Depends(finance_user)):
+        row = own_installment(db, user, installment_id)
+        if not row.paid_on:
+            raise HTTPException(409, 'Esta parcela ainda não possui recebimento registrado.')
+        # Ao desfazer um recebimento, a comissão derivada dele também deixa de existir.
+        row.paid_on = None
+        row.received_via = None
+        row.commission_eur_cents = 0
+        row.commission_paid_on = None
+        db.commit()
+        db.refresh(row)
         return installment_dict(row)
 
     app.include_router(router)

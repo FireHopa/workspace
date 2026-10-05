@@ -1,1 +1,1 @@
-{"provider": "frankfurter-ecb-v2", "quote": {"eur_brl": "5.9177", "reference_date": "2026-09-29", "fetched_at": "2026-09-29T14:14:04.818031+00:00", "source": "Frankfurter / BCE", "frequency": "daily"}, "error": null, "retry_at": 1790694844.8203673}
+{"provider": "frankfurter-ecb-v2", "quote": {"eur_brl": "5.861", "reference_date": "2026-10-02", "fetched_at": "2026-10-02T22:25:28.018989+00:00", "source": "Frankfurter / BCE", "frequency": "daily"}, "error": null, "retry_at": 1790983528.019058}
