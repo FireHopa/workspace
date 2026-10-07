@@ -265,7 +265,11 @@ async def lifespan(app: FastAPI):
         db.add(new_admin)
         db.commit()
     db.close()
-    yield
+    mapa_ia_runtime.start()
+    try:
+        yield
+    finally:
+        mapa_ia_runtime.stop()
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     error = HTTPException(status_code=401, detail="Sessão inválida ou expirada.", headers={"WWW-Authenticate": "Bearer"})
@@ -301,6 +305,11 @@ def require_module_access(request: Request, db: Session = Depends(get_db)):
             path == f"/users/{user.id}/password" and request.method == "PUT")
         if not allowed:
             raise HTTPException(403, "Este usuário tem acesso somente ao Social Publisher.")
+    elif user.role == "mapa_ia":
+        allowed = path.startswith("/mapa-ia/") or path == "/me" or (
+            path == f"/users/{user.id}/password" and request.method == "PUT")
+        if not allowed:
+            raise HTTPException(403, "Este usuário tem acesso somente ao Mapa IA · Imersões.")
     elif user.role not in ("admin", "employee", "conferente"):
         raise HTTPException(403, "Perfil de acesso inválido.")
 
@@ -323,8 +332,8 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ---- SCHEMAS ----
-class UserCreate(BaseModel): name: str; email: str; password: str; role: Literal["admin", "employee", "conferente", "finance", "social_publisher", "social_publisher_admin"] = "employee"; team_role: Optional[str] = None; is_strategist: bool = False
-class UserUpdate(BaseModel): role: Optional[Literal["admin", "employee", "conferente", "finance", "social_publisher", "social_publisher_admin"]] = None; team_role: Optional[str] = None; is_strategist: Optional[bool] = None
+class UserCreate(BaseModel): name: str; email: str; password: str; role: Literal["admin", "employee", "conferente", "finance", "social_publisher", "social_publisher_admin", "mapa_ia"] = "employee"; team_role: Optional[str] = None; is_strategist: bool = False
+class UserUpdate(BaseModel): role: Optional[Literal["admin", "employee", "conferente", "finance", "social_publisher", "social_publisher_admin", "mapa_ia"]] = None; team_role: Optional[str] = None; is_strategist: Optional[bool] = None
 class UserResponse(BaseModel):
     id: int; name: str; email: str; role: str; team_role: Optional[str]; is_strategist: bool
     class Config: from_attributes = True
@@ -402,7 +411,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db), actor: DBUser =
     if not user.name.strip() or not user.email.strip():
         raise HTTPException(422, "Nome e e-mail são obrigatórios.")
     if db.query(DBUser).filter(DBUser.email == user.email).first(): raise HTTPException(status_code=400, detail="E-mail já cadastrado.")
-    if user.role in ("finance", "social_publisher", "social_publisher_admin"):
+    if user.role in ("finance", "social_publisher", "social_publisher_admin", "mapa_ia"):
         user.team_role = None
         user.is_strategist = False
     new_user = DBUser(name=user.name, email=user.email, hashed_password=get_password_hash(user.password), role=user.role, team_role=user.team_role, is_strategist=user.is_strategist)
@@ -421,7 +430,7 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
     if user_update.role is not None: user.role = user_update.role
     if user_update.team_role is not None: user.team_role = user_update.team_role
     if user_update.is_strategist is not None: user.is_strategist = user_update.is_strategist
-    if user.role in ("finance", "social_publisher", "social_publisher_admin"):
+    if user.role in ("finance", "social_publisher", "social_publisher_admin", "mapa_ia"):
         user.team_role = None
         user.is_strategist = False
     db.commit(); db.refresh(user)
@@ -778,3 +787,6 @@ def current_profile(user: DBUser = Depends(get_current_user)):
 
 from finance import register_finance
 register_finance(app, engine, get_db, get_current_user)
+
+from mapa_ia.workspace import register_mapa_ia
+mapa_ia_runtime = register_mapa_ia(app, SessionLocal, DBUser, get_current_user)

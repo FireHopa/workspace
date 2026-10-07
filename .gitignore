@@ -8,3 +8,20 @@ __pycache__/
 # Social Publisher - credenciais locais
 social-publisher/data/settings.json
 social-publisher/data/tokens.json
+# Mapa IA - dados locais/runtime
+mapa_ia/data/
+mapa_ia/legacy_data/
+
+# SQLite
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Locks
+*.lock
+
+# Dados enviados por usuarios
+mapa_ia/**/uploads/
+
+# Configuracoes locais com secrets
+mapa_ia/**/settings.json
