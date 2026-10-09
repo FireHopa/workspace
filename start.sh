@@ -16,6 +16,18 @@ if ! command -v python >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! python -c "import reportlab" >/dev/null 2>&1; then
+  echo "Instalando dependencias do Skybob..."
+  if python -m pip --version >/dev/null 2>&1; then
+    python -m pip install -r requirements-skybob.txt --no-cache-dir
+  elif command -v pip >/dev/null 2>&1; then
+    pip install -r requirements-skybob.txt --no-cache-dir
+  else
+    echo "ERRO: pip e necessario para instalar o gerador de PDF do Skybob." >&2
+    exit 1
+  fi
+fi
+
 if [ ! -d social-publisher/node_modules ]; then
   (cd social-publisher && npm install --omit=dev --no-audit --no-fund)
 fi

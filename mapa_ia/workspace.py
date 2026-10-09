@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from . import core, niche_reviews, organizer
+from . import core, dashboard, niche_reviews, organizer
 
 logger = logging.getLogger(__name__)
 MAX_BODY = 15 * 1024 * 1024
@@ -236,6 +236,33 @@ def register_mapa_ia(app, session_factory, user_model, get_current_user):
     @router.post("/immersions/{immersion_id}/jobs")
     def create_job(immersion_id: str, data=Depends(read_json), store=Depends(account_store)):
         return store.create_job(immersion_id, data)
+
+    @router.get("/jobs/{job_id}/google-profiles")
+    def google_profiles(job_id: str, refresh: bool = False, store=Depends(account_store)):
+        return store.google_profiles(job_id, refresh)
+
+    @router.get("/jobs/{job_id}/dashboard")
+    def dashboard_summary(job_id: str, request: Request, store=Depends(account_store)):
+        filters = {key: request.query_params[key] for key in ("q", "niche", "city", "neighborhood", "company", "presence", "position") if key in request.query_params}
+        return dashboard.summary(store, job_id, filters)
+
+    @router.get("/jobs/{job_id}/dashboard/audit")
+    def dashboard_audit(job_id: str, request: Request, page: int = 1, page_size: int = 25, store=Depends(account_store)):
+        filters = {key: request.query_params[key] for key in ("q", "niche", "city", "neighborhood", "company", "presence", "position") if key in request.query_params}
+        return dashboard.audit(store, job_id, filters, page, page_size)
+
+    @router.get("/jobs/{job_id}/dashboard/entities/{entity_key}")
+    def dashboard_entity(job_id: str, entity_key: str, store=Depends(account_store)):
+        return dashboard.entity_detail(store, job_id, entity_key)
+
+    @router.get("/jobs/{job_id}/dashboard/map")
+    def dashboard_map(job_id: str, request: Request, limit: int = 80, refresh: bool = False, store=Depends(account_store)):
+        filters = {key: request.query_params[key] for key in ("q", "niche", "city", "neighborhood", "company", "presence", "position") if key in request.query_params}
+        return dashboard.map_data(store, job_id, filters, limit, refresh)
+
+    @router.get("/jobs/{job_id}/dashboard/export")
+    def dashboard_export(job_id: str, store=Depends(account_store)):
+        return download(*dashboard.export_csv(store, job_id))
 
     @router.post("/jobs/{job_id}")
     def job_action(job_id: str, data=Depends(read_json), store=Depends(account_store)):

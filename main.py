@@ -266,9 +266,11 @@ async def lifespan(app: FastAPI):
         db.commit()
     db.close()
     mapa_ia_runtime.start()
+    skybob_runtime.start()
     try:
         yield
     finally:
+        skybob_runtime.stop()
         mapa_ia_runtime.stop()
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -306,10 +308,10 @@ def require_module_access(request: Request, db: Session = Depends(get_db)):
         if not allowed:
             raise HTTPException(403, "Este usuário tem acesso somente ao Social Publisher.")
     elif user.role == "mapa_ia":
-        allowed = path.startswith("/mapa-ia/") or path == "/me" or (
+        allowed = path.startswith("/mapa-ia/") or path.startswith("/skybob/") or path == "/me" or (
             path == f"/users/{user.id}/password" and request.method == "PUT")
         if not allowed:
-            raise HTTPException(403, "Este usuário tem acesso somente ao Mapa IA · Imersões.")
+            raise HTTPException(403, "Este usuário tem acesso somente ao Mapa IA e ao Skybob.")
     elif user.role not in ("admin", "employee", "conferente"):
         raise HTTPException(403, "Perfil de acesso inválido.")
 
@@ -790,3 +792,6 @@ register_finance(app, engine, get_db, get_current_user)
 
 from mapa_ia.workspace import register_mapa_ia
 mapa_ia_runtime = register_mapa_ia(app, SessionLocal, DBUser, get_current_user)
+
+from skybob.workspace import register_skybob
+skybob_runtime = register_skybob(app, SessionLocal, DBUser, get_current_user)

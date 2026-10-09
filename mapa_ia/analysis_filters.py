@@ -28,7 +28,7 @@ def apply(results, filters=None, participants=None):
     selected = []
     for row in results:
         names = participants.get(row["id"], [p.get("name", "") for p in row.get("participants", [])])
-        text = core.norm(" ".join([row.get("name", ""), row.get("original_name", ""), row.get("niche", ""), *names]))
+        text = core.norm(" ".join([row.get("name", ""), row.get("original_name", ""), row.get("niche", ""), row.get("actual_neighborhood", ""), row.get("actual_city", ""), *names]))
         if query and query not in text:
             continue
         if filters["niche"] != "all" and core.norm(row["niche"]) != core.norm(filters["niche"]):

@@ -1,4 +1,4 @@
-"""Confirmação humana de sugestões, sem novas chamadas à IA."""
+"""Aplicação automática de identificações confiáveis e revisão manual das exceções."""
 from __future__ import annotations
 
 import json
@@ -17,13 +17,30 @@ CREATE INDEX IF NOT EXISTS idx_suggestions_company_status ON niche_suggestions(c
 """
 
 
-def record(db, task, result, sources, revision, origin):
-    if result.get("status") != "identified" or not result.get("niche") or (origin != "local" and not sources):
+def record(db, task, result, sources, revision, origin, auto_apply=False):
+    if result.get("status") != "identified" or not result.get("niche"):
         return False
     db.execute("UPDATE niche_suggestions SET status='stale',resolved_at=? WHERE company_id=? AND id!=? AND status IN ('pending','deferred')", (core.now(), task["company_id"], task["id"]))
     db.execute("INSERT OR IGNORE INTO niche_suggestions(id,company_id,job_id,result_json,sources_json,expected_revision,origin,created_at) VALUES(?,?,?,?,?,?,?,?)",
                (task["id"], task["company_id"], task["job_id"], json.dumps(result, ensure_ascii=False), json.dumps(sources, ensure_ascii=False), revision, origin, core.now()))
-    return True
+
+    # Uma identificação da IA só é aplicada automaticamente quando todos os
+    # campos necessários para a análise estão completos e o cadastro tem um
+    # nome específico. Resultados locais (sem pesquisa à IA) continuam exigindo
+    # revisão humana para não transformar preenchimento antigo em validação.
+    if auto_apply and origin != "local":
+        company = db.execute("SELECT * FROM companies WHERE id=?", (task["company_id"],)).fetchone()
+        complete = bool(
+            company
+            and company["name"]
+            and not core.generic(company["name"])
+            and str(result.get("city", "")).strip()
+            and str(result.get("neighborhood", "")).strip()
+        )
+        if complete:
+            resolved = _resolve(db, task["id"], {"action": "accept", "autoApproved": True})
+            return resolved.get("status") == "accepted"
+    return None
 
 
 def migrate(db):
@@ -45,7 +62,7 @@ def migrate(db):
 
 
 def pending(db, immersion_id):
-    rows = db.execute("SELECT s.*,c.name,c.niche AS current_niche,c.actual_city,c.status AS company_status,c.updated_at FROM niche_suggestions s JOIN companies c ON c.id=s.company_id WHERE c.immersion_id=? AND s.status IN ('pending','deferred') ORDER BY s.created_at,s.rowid", (immersion_id,))
+    rows = db.execute("SELECT s.*,c.name,c.niche AS current_niche,c.actual_city,c.actual_neighborhood,c.status AS company_status,c.updated_at FROM niche_suggestions s JOIN companies c ON c.id=s.company_id WHERE c.immersion_id=? AND s.status IN ('pending','deferred') ORDER BY s.created_at,s.rowid", (immersion_id,))
     result = []
     for row in rows:
         if row["expected_revision"] != row["updated_at"] or row["company_status"] == "excluded":
@@ -54,9 +71,9 @@ def pending(db, immersion_id):
         proposal = json.loads(row["result_json"])
         result.append({"id": row["id"], "companyId": row["company_id"], "jobId": row["job_id"],
                        "status": row["status"], "origin": row["origin"], "createdAt": row["created_at"],
-                       "name": row["name"], "niche": proposal["niche"], "city": proposal.get("city", ""),
-                       "currentNiche": row["current_niche"], "currentCity": row["actual_city"],
-                       "canAcceptInBatch": bool(row["name"] and not core.generic(row["name"])),
+                       "name": row["name"], "niche": proposal["niche"], "city": proposal.get("city", ""), "neighborhood": proposal.get("neighborhood", ""),
+                       "currentNiche": row["current_niche"], "currentCity": row["actual_city"], "currentNeighborhood": row["actual_neighborhood"],
+                       "canAcceptInBatch": bool(row["name"] and not core.generic(row["name"]) and (proposal.get("city") or row["actual_city"]) and (proposal.get("neighborhood") or row["actual_neighborhood"])),
                        "reason": proposal.get("reason", ""), "sources": json.loads(row["sources_json"])})
     return result
 
@@ -83,9 +100,9 @@ def _resolve(db, suggestion_id, data):
     name = str(data.get("name", company["name"])).strip()
     if not niche or len(niche) > 200 or len(name) > 250:
         raise core.AppError("Informe um nicho de até 200 caracteres e um nome de até 250 caracteres.")
-    status = "ready" if name and not core.generic(name) else "review"
-    # Cidade informada manualmente é preservada; evidência só preenche cidade vazia.
-    city = company["actual_city"] or str(proposed.get("city", ""))[:100]
+    city = str(data.get("city", proposed.get("city") or company["actual_city"])).strip()[:100]
+    neighborhood = str(data.get("neighborhood", proposed.get("neighborhood") or company["actual_neighborhood"])).strip()[:120]
+    status = "ready" if name and not core.generic(name) and city and neighborhood else "review"
     notes = company["notes"]
     reason = str(proposed.get("reason", ""))[:300]
     if reason and reason not in notes:
@@ -93,11 +110,11 @@ def _resolve(db, suggestion_id, data):
     moment = core.now()
     sources = suggestion["sources_json"] if suggestion["origin"] != "local" else company["sources"]
     changed = core.norm(niche) != core.norm(company["niche"])
-    db.execute("UPDATE companies SET name=?,niche=?,actual_city=?,notes=?,sources=?,status=?,updated_at=? WHERE id=?", (name, niche, city, notes, sources, status, moment, company["id"]))
-    proposed["application"] = {"nicheChanged": changed, "previousNiche": company["niche"]}
+    db.execute("UPDATE companies SET name=?,niche=?,actual_city=?,actual_neighborhood=?,notes=?,sources=?,status=?,updated_at=? WHERE id=?", (name, niche, city, neighborhood, notes, sources, status, moment, company["id"]))
+    proposed["application"] = {"nicheChanged": changed, "previousNiche": company["niche"], "autoApproved": bool(data.get("autoApproved", False))}
     db.execute("UPDATE niche_suggestions SET status='accepted',resolved_at=?,approved_niche=?,approved_name=?,result_json=? WHERE id=?", (moment, niche, name, json.dumps(proposed, ensure_ascii=False), suggestion_id))
     db.execute("UPDATE niche_suggestions SET status='stale',resolved_at=? WHERE company_id=? AND id!=? AND status IN ('pending','deferred')", (moment, company["id"], suggestion_id))
-    return {"id": suggestion_id, "status": "accepted", "companyStatus": status, "nicheChanged": changed, "alreadyAccepted": False}
+    return {"id": suggestion_id, "status": "accepted", "companyStatus": status, "nicheChanged": changed, "alreadyAccepted": False, "autoApproved": bool(data.get("autoApproved", False))}
 
 
 def resolve(store, suggestion_id, data):
@@ -135,8 +152,8 @@ def resolve_many(store, data):
 
 
 def job_results(db, job):
-    """Resultado persistente: consulta concluída não significa alteração aplicada."""
-    rows, counts = [], {key: 0 for key in ("pending", "accepted", "changed", "unchanged", "reused", "inconclusive", "failed", "superseded", "stopped", "queued", "running")}
+    """Resultado persistente da identificação, incluindo aprovações automáticas."""
+    rows, counts = [], {key: 0 for key in ("pending", "accepted", "autoApproved", "changed", "unchanged", "reused", "inconclusive", "failed", "superseded", "stopped", "queued", "running")}
     snapshot = {c["id"]: c for c in job["snapshot"]}
     legacy_results = 0
     tasks = db.execute("SELECT t.*,c.name,c.niche AS current_niche,s.id AS suggestion_id,s.status AS suggestion_status,s.approved_niche,s.result_json AS approved_result FROM tasks t LEFT JOIN companies c ON c.id=t.company_id LEFT JOIN niche_suggestions s ON s.id=t.id WHERE t.job_id=? ORDER BY t.rowid", (job["id"],))
@@ -162,7 +179,12 @@ def job_results(db, job):
         counts[outcome] += 1
         if origin in {"local", "cache"} and outcome != "reused":
             counts["reused"] += 1
+        auto_approved = bool(approval.get("application", {}).get("autoApproved", False))
+        if outcome == "accepted" and auto_approved:
+            counts["autoApproved"] += 1
         if outcome == "accepted" and approval.get("application", {}).get("nicheChanged", core.norm(previous.get("niche", "")) != core.norm(task["approved_niche"])):
             counts["changed"] += 1
-        rows.append({"id": task["id"], "companyId": task["company_id"], "name": task["name"] or previous.get("target_name") or previous.get("name", ""), "previousNiche": previous.get("niche", ""), "currentNiche": task["current_niche"] or "", "proposedNiche": proposal.get("niche", ""), "approvedNiche": task["approved_niche"] or "", "city": proposal.get("city", ""), "reason": task["error"] or proposal.get("reason", ""), "origin": origin, "outcome": outcome, "suggestionId": task["suggestion_id"] or "", "suggestionStatus": task["suggestion_status"] or "", "hasSources": bool(raw.get("sources"))})
+        review = raw.get("review", {}) or {}
+        google_validation = raw.get("googleValidation", {}) or {}
+        rows.append({"id": task["id"], "companyId": task["company_id"], "name": task["name"] or previous.get("target_name") or previous.get("name", ""), "previousNiche": previous.get("niche", ""), "currentNiche": task["current_niche"] or "", "proposedNiche": proposal.get("niche", ""), "approvedNiche": task["approved_niche"] or "", "city": proposal.get("city", ""), "neighborhood": proposal.get("neighborhood", ""), "reason": task["error"] or proposal.get("reason", ""), "origin": origin, "outcome": outcome, "suggestionId": task["suggestion_id"] or "", "suggestionStatus": task["suggestion_status"] or "", "hasSources": bool(raw.get("sources")), "autoApproved": auto_approved, "verification": str(review.get("verification") or ""), "verificationReason": str(google_validation.get("reason") or "")})
     return {"counts": counts, "rows": rows, "legacyResults": legacy_results}
