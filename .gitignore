@@ -25,3 +25,7 @@ mapa_ia/**/uploads/
 
 # Configuracoes locais com secrets
 mapa_ia/**/settings.json
+
+# Ambientes virtuais locais
+/venv/
+/.venv/

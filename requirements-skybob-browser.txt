@@ -1,0 +1,3 @@
+# Optional: ordinary rendering of public sites that require JavaScript.
+# After installing, run: python -m playwright install --with-deps chromium
+playwright>=1.49,<2

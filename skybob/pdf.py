@@ -9,16 +9,13 @@ from xml.sax.saxutils import escape
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.enums import TA_CENTER
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.platypus import (
-        BaseDocTemplate, Flowable, Frame, KeepTogether, PageBreak, PageTemplate,
-        Paragraph, Spacer, Table, TableStyle,
-    )
+    from reportlab.platypus import BaseDocTemplate, CondPageBreak, Flowable, Frame, PageTemplate, Paragraph, Table, TableStyle
 except ImportError as exc:
     raise RuntimeError("O Skybob precisa do pacote reportlab. Rode: pip install -r requirements-skybob.txt") from exc
 
@@ -30,245 +27,234 @@ LINE = colors.HexColor("#E1E7EF")
 PAPER = colors.HexColor("#F6F8FB")
 WHITE = colors.white
 RED = colors.HexColor("#E14F42")
-AMBER = colors.HexColor("#D99B32")
-BLUE = colors.HexColor("#3974D8")
-GREEN = colors.HexColor("#2F9B6A")
 
 
 def _register_fonts():
-    regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    if os.path.exists(regular) and os.path.exists(bold):
+    directory = "/usr/share/fonts/truetype/dejavu"
+    if os.path.exists(directory + "/DejaVuSans.ttf"):
         try:
-            pdfmetrics.registerFont(TTFont("SkySans", regular))
-            pdfmetrics.registerFont(TTFont("SkySans-Bold", bold))
+            pdfmetrics.registerFont(TTFont("SkySans", directory + "/DejaVuSans.ttf"))
+            pdfmetrics.registerFont(TTFont("SkySans-Bold", directory + "/DejaVuSans-Bold.ttf"))
+            pdfmetrics.registerFontFamily("SkySans", normal="SkySans", bold="SkySans-Bold", italic="SkySans", boldItalic="SkySans-Bold")
             return "SkySans", "SkySans-Bold"
         except Exception:
             pass
     return "Helvetica", "Helvetica-Bold"
 
+
 FONT, FONT_BOLD = _register_fonts()
 
 
-def _clean(value) -> str:
-    text = str(value or "").strip()
-    text = text.replace("—", "-").replace("–", "-").replace("…", "...")
-    return text
+def _clean(value):
+    return str(value or "").strip().replace("—", "-").replace("–", "-").replace("…", "...")
 
 
-def _text(value) -> str:
-    """Treat generated research as plain text, never as ReportLab markup."""
-    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", _clean(value))
-    return escape(text).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br/>")
+def _text(value):
+    value = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", _clean(value))
+    return escape(value).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br/>")
 
 
-def _host(url: str) -> str:
+def _host(url):
     try:
         return (urlparse(url).hostname or url).removeprefix("www.")
     except ValueError:
         return url
 
 
+def _style(name, **options):
+    return ParagraphStyle(name, fontName=FONT, fontSize=9, leading=13, textColor=INK,
+                          splitLongWords=True, allowWidows=0, allowOrphans=0, **options)
+
+
+def _styles():
+    return {
+        "body": _style("body", spaceAfter=3 * mm),
+        "lead": ParagraphStyle("lead", fontName=FONT, fontSize=11, leading=16, textColor=INK, spaceAfter=4 * mm, allowWidows=0, allowOrphans=0),
+        "h2": ParagraphStyle("h2", fontName=FONT_BOLD, fontSize=12, leading=16, textColor=INK, spaceBefore=4 * mm, spaceAfter=3 * mm, keepWithNext=True),
+        "small": ParagraphStyle("small", fontName=FONT, fontSize=7, leading=10, textColor=MUTED, spaceAfter=2.5 * mm, splitLongWords=True),
+        "quote": _style("quote", leftIndent=4 * mm, rightIndent=4 * mm, spaceAfter=3 * mm),
+        "bullet": _style("bullet", leftIndent=4 * mm, firstLineIndent=-4 * mm, spaceAfter=2.5 * mm),
+    }
+
+
 class SectionBand(Flowable):
-    def __init__(self, number: str, title: str, subtitle: str = ""):
+    keepWithNext = False
+
+    def __init__(self, number, title, subtitle=""):
         super().__init__()
-        self.number = number
-        self.title = title
-        self.subtitle = subtitle
-        self.height = 28 * mm
+        self.number, self.title, self.subtitle = number, title, subtitle
+        self.spaceBefore = 6 * mm
+        self.spaceAfter = 4 * mm
 
     def wrap(self, availWidth, availHeight):
         self.width = availWidth
+        self._title = Paragraph(_text(self.title), ParagraphStyle("band-title", fontName=FONT_BOLD, fontSize=13, leading=17, textColor=WHITE))
+        self._subtitle = Paragraph(_text(self.subtitle), ParagraphStyle("band-subtitle", fontName=FONT, fontSize=7.5, leading=11, textColor=colors.HexColor("#AAB8CB")))
+        self._title_h = self._title.wrap(availWidth - 29 * mm, availHeight)[1]
+        self._subtitle_h = self._subtitle.wrap(availWidth - 29 * mm, availHeight)[1] if self.subtitle else 0
+        self.height = 12 * mm + self._title_h + (3 * mm + self._subtitle_h if self.subtitle else 0)
         return availWidth, self.height
 
     def draw(self):
         c = self.canv
-        w = self.width
         c.setFillColor(NAVY)
-        c.roundRect(0, 0, w, self.height, 4 * mm, fill=1, stroke=0)
+        c.roundRect(0, 0, self.width, self.height, 3 * mm, fill=1, stroke=0)
         c.setFillColor(RED)
         c.setFont(FONT_BOLD, 10)
-        c.drawString(7 * mm, self.height - 10 * mm, self.number)
-        c.setFillColor(WHITE)
-        c.setFont(FONT_BOLD, 16)
-        c.drawString(22 * mm, self.height - 10.5 * mm, self.title[:80])
+        c.drawString(6 * mm, self.height - 6 * mm - 12, self.number)
+        y = self.height - 6 * mm - self._title_h
+        self._title.drawOn(c, 22 * mm, y)
         if self.subtitle:
-            c.setFillColor(colors.HexColor("#AAB8CB"))
-            c.setFont(FONT, 8)
-            c.drawString(22 * mm, 6.5 * mm, self.subtitle[:120])
+            self._subtitle.drawOn(c, 22 * mm, y - 3 * mm - self._subtitle_h)
 
 
 class MetricStrip(Flowable):
     def __init__(self, items):
         super().__init__()
         self.items = items
-        self.height = 31 * mm
+        self.spaceAfter = 4 * mm
 
     def wrap(self, availWidth, availHeight):
         self.width = availWidth
+        cell = availWidth / max(1, len(self.items))
+        self.labels = [Paragraph(_text(label), ParagraphStyle("metric-label", fontName=FONT, fontSize=7, leading=10, textColor=MUTED, alignment=TA_CENTER)) for _, label in self.items]
+        self.label_heights = [p.wrap(cell - 6 * mm, availHeight)[1] for p in self.labels]
+        self.height = 18 * mm + max(self.label_heights, default=0)
         return availWidth, self.height
 
     def draw(self):
         c = self.canv
-        n = max(1, len(self.items))
-        cell = self.width / n
-        for i, (value, label) in enumerate(self.items):
-            x = i * cell
-            if i:
+        cell = self.width / max(1, len(self.items))
+        c.setFillColor(WHITE)
+        c.roundRect(0, 0, self.width, self.height, 3 * mm, fill=1, stroke=0)
+        for index, (value, _) in enumerate(self.items):
+            x = index * cell
+            if index:
                 c.setStrokeColor(LINE)
-                c.line(x, 3 * mm, x, self.height - 3 * mm)
+                c.line(x, 4 * mm, x, self.height - 4 * mm)
+            label = _clean(value)
+            size = min(19, (cell - 6 * mm) / max(1, pdfmetrics.stringWidth(label, FONT_BOLD, 1)))
             c.setFillColor(INK)
-            c.setFont(FONT_BOLD, 19)
-            c.drawCentredString(x + cell / 2, 16 * mm, _clean(value)[:20])
-            c.setFillColor(MUTED)
-            c.setFont(FONT, 7.5)
-            c.drawCentredString(x + cell / 2, 8 * mm, _clean(label)[:42])
-
-
-class LockedPlan(Flowable):
-    def __init__(self, priorities: int, fronts: int):
-        super().__init__()
-        self.priorities = priorities
-        self.fronts = fronts
-        self.height = 108 * mm
-
-    def wrap(self, availWidth, availHeight):
-        self.width = availWidth
-        return availWidth, self.height
-
-    def draw(self):
-        c = self.canv
-        w = self.width
-        c.setFillColor(NAVY)
-        c.roundRect(0, 0, w, self.height, 5 * mm, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor("#73839A"))
-        c.setFont(FONT_BOLD, 8)
-        c.drawString(8 * mm, self.height - 12 * mm, "PLANO DE CORRECAO IDENTIFICADO")
-        c.setFillColor(WHITE)
-        c.setFont(FONT_BOLD, 22)
-        c.drawString(8 * mm, self.height - 25 * mm, f"{self.priorities} prioridades. {self.fronts} frentes.")
-        c.setFillColor(colors.HexColor("#B1BECE"))
-        c.setFont(FONT, 8)
-        c.drawString(8 * mm, self.height - 34 * mm, "Os proximos passos existem, mas nao fazem parte desta auditoria.")
-        top = self.height - 48 * mm
-        for i in range(min(6, max(3, self.priorities))):
-            y = top - i * 10.8 * mm
-            c.setFillColor(colors.HexColor("#253247"))
-            c.roundRect(8 * mm, y, w - 16 * mm, 7.5 * mm, 2 * mm, fill=1, stroke=0)
-            # varias faixas translúcidas dão sensação de conteúdo desfocado/bloqueado
-            widths = [0.77, 0.58, 0.69]
-            c.setFillColor(colors.Color(0.72, 0.76, 0.82, alpha=0.32))
-            c.roundRect(12 * mm, y + 4.3 * mm, (w - 32 * mm) * widths[i % 3], 1.7 * mm, 0.8 * mm, fill=1, stroke=0)
-            c.setFillColor(colors.Color(0.72, 0.76, 0.82, alpha=0.20))
-            c.roundRect(12 * mm, y + 1.7 * mm, (w - 42 * mm) * widths[(i + 1) % 3], 1.2 * mm, 0.6 * mm, fill=1, stroke=0)
-        c.setFillColor(RED)
-        c.roundRect(w - 40 * mm, 8 * mm, 30 * mm, 9 * mm, 4.5 * mm, fill=1, stroke=0)
-        c.setFillColor(WHITE)
-        c.setFont(FONT_BOLD, 7.3)
-        c.drawCentredString(w - 25 * mm, 11.3 * mm, "CONTEUDO BLOQUEADO")
+            c.setFont(FONT_BOLD, size)
+            c.drawCentredString(x + cell / 2, self.height - 10 * mm, label)
+            self.labels[index].drawOn(c, x + 3 * mm, 4 * mm)
 
 
 class FindingCard(Flowable):
-    def __init__(self, title: str, body: str, badge: str, refs: str, body_paragraph=None, continuation=False):
+    """Measured heading and body; long text continues inside another measured card."""
+    def __init__(self, title, body, badge, refs="", body_paragraph=None, continuation=False):
         super().__init__()
-        self.title = _clean(title)
-        self.body = _clean(body)
-        self.badge = _clean(badge)
-        self.refs = _clean(refs)
+        self.title, self.body, self.badge, self.refs = map(_clean, (title, body, badge, refs))
         self.continuation = continuation
-        self.width = 0
-        self.height = 0
-        self._body_para = body_paragraph
+        self._body = body_paragraph
+        self.spaceAfter = 3 * mm
 
     def wrap(self, availWidth, availHeight):
         self.width = availWidth
-        if self._body_para is None:
-            style = ParagraphStyle("finding-body-inner", fontName=FONT, fontSize=9, leading=13, textColor=INK)
-            self._body_para = Paragraph(_text(self.body), style)
-        _, body_h = self._body_para.wrap(availWidth - 16 * mm, availHeight)
-        # Reserve room for heading, body and footer without overlapping text.
-        self.height = max(40 * mm, body_h + 34 * mm)
+        inner = availWidth - 12 * mm
+        heading = self.title + (" (continuação)" if self.continuation else "")
+        self._heading = Paragraph(_text(heading), ParagraphStyle("finding-title", fontName=FONT_BOLD, fontSize=11, leading=15, textColor=INK))
+        self._badge = Paragraph(_text(self.badge.upper()), ParagraphStyle("finding-badge", fontName=FONT_BOLD, fontSize=6.5, leading=9, textColor=RED))
+        self._refs = Paragraph(_text(self.refs), ParagraphStyle("finding-refs", fontName=FONT, fontSize=6.5, leading=9, textColor=MUTED))
+        if self._body is None:
+            self._body = Paragraph(_text(self.body), _style("finding-body"))
+        self._heading_h = self._heading.wrap(inner, availHeight)[1]
+        self._badge_h = self._badge.wrap(inner, availHeight)[1]
+        self._refs_h = self._refs.wrap(inner, availHeight)[1] if self.refs else 0
+        self._body_h = self._body.wrap(inner, availHeight)[1]
+        self._overhead = 12 * mm + self._badge_h + 2 * mm + self._heading_h + 2.5 * mm
+        if self.refs:
+            self._overhead += 3 * mm + self._refs_h
+        self.height = self._overhead + self._body_h
         return availWidth, self.height
 
     def split(self, availWidth, availHeight):
-        # Custom Flowables cannot split automatically. Split paragraphs into
-        # linked visual cards instead of failing on long generated reports.
-        if availHeight <= 42 * mm:
+        self.wrap(availWidth, availHeight)
+        # References belong only to the last fragment, making room for actual text.
+        first_overhead = self._overhead - (3 * mm + self._refs_h if self.refs else 0)
+        available_body = availHeight - first_overhead
+        if available_body < 26:
             return []
-        if self._body_para is None:
-            self.wrap(availWidth, availHeight)
-        parts = self._body_para.split(availWidth - 16 * mm, availHeight - 34 * mm)
+        parts = self._body.split(availWidth - 12 * mm, available_body)
         if len(parts) < 2:
             return []
-        first = FindingCard(self.title, "", self.badge, "", body_paragraph=parts[0], continuation=self.continuation)
-        rest = FindingCard(self.title, "", self.badge, self.refs, body_paragraph=parts[1], continuation=True)
-        return [first, rest]
+        return [
+            FindingCard(self.title, "", self.badge, "", parts[0], self.continuation),
+            FindingCard(self.title, "", self.badge, self.refs, parts[1], True),
+        ]
 
     def draw(self):
         c = self.canv
         c.setFillColor(WHITE)
         c.setStrokeColor(LINE)
-        c.roundRect(0, 0, self.width, self.height, 4 * mm, fill=1, stroke=1)
+        c.roundRect(0, 0, self.width, self.height, 3 * mm, fill=1, stroke=1)
         c.setFillColor(RED)
-        c.roundRect(6 * mm, self.height - 12 * mm, 27 * mm, 6 * mm, 3 * mm, fill=1, stroke=0)
-        c.setFillColor(WHITE)
-        c.setFont(FONT_BOLD, 6.5)
-        c.drawCentredString(19.5 * mm, self.height - 9.9 * mm, self.badge[:24].upper())
-        c.setFillColor(INK)
-        c.setFont(FONT_BOLD, 13)
-        heading = self.title + (" (cont.)" if self.continuation else "")
-        c.drawString(7 * mm, self.height - 20 * mm, heading[:78])
-        if self._body_para:
-            self._body_para.drawOn(c, 7 * mm, 8 * mm)
+        c.roundRect(0, 5 * mm, 1 * mm, self.height - 10 * mm, .5 * mm, fill=1, stroke=0)
+        y = self.height - 6 * mm
+        for paragraph, height, gap in ((self._badge, self._badge_h, 2 * mm), (self._heading, self._heading_h, 2.5 * mm), (self._body, self._body_h, 3 * mm)):
+            y -= height
+            paragraph.drawOn(c, 6 * mm, y)
+            y -= gap
         if self.refs:
-            c.setFillColor(MUTED)
-            c.setFont(FONT, 6.5)
-            c.drawRightString(self.width - 7 * mm, 4 * mm, self.refs[:90])
+            y -= self._refs_h
+            self._refs.drawOn(c, 6 * mm, y)
 
 
-def _styles():
-    base = getSampleStyleSheet()
-    return {
-        "h1": ParagraphStyle("h1", parent=base["Heading1"], fontName=FONT_BOLD, fontSize=28, leading=31, textColor=INK, spaceAfter=8 * mm),
-        "h2": ParagraphStyle("h2", parent=base["Heading2"], fontName=FONT_BOLD, fontSize=18, leading=22, textColor=INK, spaceBefore=2 * mm, spaceAfter=5 * mm),
-        "body": ParagraphStyle("body", parent=base["BodyText"], fontName=FONT, fontSize=9.5, leading=14.2, textColor=INK, spaceAfter=4 * mm),
-        "lead": ParagraphStyle("lead", parent=base["BodyText"], fontName=FONT, fontSize=13, leading=19, textColor=INK, spaceAfter=6 * mm),
-        "small": ParagraphStyle("small", parent=base["BodyText"], fontName=FONT, fontSize=7.5, leading=10.5, textColor=MUTED, spaceAfter=2 * mm),
-        "quote": ParagraphStyle("quote", parent=base["BodyText"], fontName=FONT, fontSize=10, leading=15, leftIndent=7 * mm, borderColor=LINE, borderWidth=0, borderPadding=0, textColor=INK, spaceAfter=4 * mm),
-        "final": ParagraphStyle("final", parent=base["BodyText"], fontName=FONT_BOLD, fontSize=23, leading=28, alignment=TA_CENTER, textColor=INK, spaceBefore=18 * mm, spaceAfter=8 * mm),
-        "center": ParagraphStyle("center", parent=base["BodyText"], fontName=FONT, fontSize=10, leading=15, alignment=TA_CENTER, textColor=MUTED),
-    }
+class LockedPlan(Flowable):
+    def __init__(self, priorities, fronts):
+        super().__init__()
+        self.priorities, self.fronts = priorities, fronts
+        self.rows = min(4, priorities)
+        self.height = (49 + self.rows * 8) * mm
+        self.spaceAfter = 5 * mm
+
+    def wrap(self, availWidth, availHeight):
+        self.width = availWidth
+        return availWidth, self.height
+
+    def draw(self):
+        c = self.canv
+        c.setFillColor(NAVY)
+        c.roundRect(0, 0, self.width, self.height, 4 * mm, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#AAB8CB"))
+        c.setFont(FONT_BOLD, 8)
+        c.drawString(7 * mm, self.height - 10 * mm, "ESTRATÉGIA DE CORREÇÃO IDENTIFICADA")
+        c.setFillColor(WHITE)
+        c.setFont(FONT_BOLD, 19)
+        c.drawString(7 * mm, self.height - 21 * mm, f"{self.priorities} prioridades. {self.fronts} frentes.")
+        c.setFillColor(colors.HexColor("#AAB8CB"))
+        c.setFont(FONT, 8)
+        c.drawString(7 * mm, self.height - 28 * mm, "Os próximos passos não fazem parte desta auditoria.")
+        for index in range(self.rows):
+            y = self.height - (40 + index * 8) * mm
+            c.setFillColor(colors.HexColor("#253247"))
+            c.roundRect(7 * mm, y, self.width - 14 * mm, 6 * mm, 1.5 * mm, fill=1, stroke=0)
+            c.setFillColor(colors.HexColor("#647187"))
+            c.roundRect(11 * mm, y + 3 * mm, (self.width - 30 * mm) * (0.66 if index % 2 else .8), 1.3 * mm, .6 * mm, fill=1, stroke=0)
+        label, size = "CONTEÚDO BLOQUEADO", 7
+        pill_width = pdfmetrics.stringWidth(label, FONT_BOLD, size) + 8 * mm
+        x = self.width - 7 * mm - pill_width
+        c.setFillColor(RED)
+        c.roundRect(x, 6 * mm, pill_width, 8 * mm, 4 * mm, fill=1, stroke=0)
+        c.setFillColor(WHITE)
+        c.setFont(FONT_BOLD, size)
+        c.drawCentredString(x + pill_width / 2, 8.8 * mm, label)
 
 
-def _source_index(payload: dict):
-    evidence_by_id = {item["id"]: item for item in payload.get("evidence", [])}
+def _source_index(payload):
+    evidence = {item["id"]: item for item in payload.get("evidence", [])}
     report = payload.get("report") or {}
     used_ids = []
-    for finding in report.get("findings", []):
-        used_ids.extend(finding.get("evidence_ids", []))
-    for row in report.get("promise_matrix", []):
-        used_ids.extend(row.get("evidence_ids", []))
-    urls = []
-    for evidence_id in used_ids:
-        item = evidence_by_id.get(evidence_id)
-        if not item:
-            continue
-        for url in item.get("sourceUrls", []):
-            if url not in urls:
-                urls.append(url)
-    return {url: index + 1 for index, url in enumerate(urls)}, urls, evidence_by_id
+    for item in report.get("findings", []) + report.get("promise_matrix", []):
+        used_ids.extend(item.get("evidence_ids", []))
+    # Approved evidence also supports the narrative and social-proof paragraphs.
+    used_ids.extend(item["id"] for item in evidence.values() if item.get("auditStatus") == "approved")
+    urls = list(dict.fromkeys(url for key in used_ids for url in evidence.get(key, {}).get("sourceUrls", [])))
+    return {url: index + 1 for index, url in enumerate(urls)}, urls, evidence
 
 
-def _refs_for_ids(ids, evidence_by_id, source_numbers):
-    refs = []
-    for evidence_id in ids or []:
-        item = evidence_by_id.get(evidence_id)
-        if not item:
-            continue
-        for url in item.get("sourceUrls", []):
-            if url in source_numbers:
-                refs.append(source_numbers[url])
-    refs = sorted(set(refs))
+def _refs_for_ids(ids, evidence, numbers):
+    refs = sorted({numbers[url] for key in ids or [] for url in evidence.get(key, {}).get("sourceUrls", []) if url in numbers})
     return "Fontes " + ", ".join(f"[{n}]" for n in refs) if refs else ""
 
 
@@ -276,11 +262,13 @@ def _page_chrome(canvas, doc):
     canvas.saveState()
     canvas.setFillColor(PAPER)
     canvas.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
+    canvas.setFillColor(RED)
+    canvas.rect(0, PAGE_H - 3 * mm, PAGE_W, 3 * mm, fill=1, stroke=0)
     canvas.setStrokeColor(LINE)
     canvas.line(18 * mm, 14 * mm, PAGE_W - 18 * mm, 14 * mm)
     canvas.setFont(FONT, 6.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, 8 * mm, "SKYBOB - INVESTIGACAO DE AUTORIDADE DIGITAL")
+    canvas.drawString(18 * mm, 8 * mm, "SKYBOB - DOSSIÊ DE AUTORIDADE DIGITAL")
     canvas.drawRightString(PAGE_W - 18 * mm, 8 * mm, str(doc.page))
     canvas.restoreState()
 
@@ -289,204 +277,123 @@ def render_dossier_pdf(payload: dict) -> bytes:
     report = payload.get("report") or {}
     if not report:
         raise ValueError("O dossiê comercial ainda não foi produzido.")
-    styles = _styles()
-    buffer = io.BytesIO()
-    doc = BaseDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=20 * mm,
-        title=f"Dossie Skybob - {payload.get('companyName','Empresa')}",
-        author="Skybob",
-    )
+    styles, buffer = _styles(), io.BytesIO()
+    doc = BaseDocTemplate(buffer, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
+                          topMargin=17 * mm, bottomMargin=21 * mm,
+                          title=f"Dossiê Skybob - {payload.get('companyName', 'Empresa')}", author="Skybob")
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
     doc.addPageTemplates([PageTemplate(id="normal", frames=[frame], onPage=_page_chrome)])
     story = []
-    source_numbers, source_urls, evidence_by_id = _source_index(payload)
+    numbers, urls, evidence = _source_index(payload)
+    section_number = 0
 
-    # capa
-    story.append(Spacer(1, 22 * mm))
-    story.append(Paragraph("SKYBOB", ParagraphStyle("cover-brand", fontName=FONT_BOLD, fontSize=42, leading=44, textColor=RED, spaceAfter=5 * mm)))
-    story.append(Paragraph("DOSSIÊ DE AUTORIDADE DIGITAL", ParagraphStyle("cover-kicker", fontName=FONT_BOLD, fontSize=11, leading=14, textColor=MUTED, spaceAfter=17 * mm)))
-    story.append(Paragraph(_text(payload.get("companyName")), ParagraphStyle("cover-company", fontName=FONT_BOLD, fontSize=30, leading=34, textColor=INK, spaceAfter=3 * mm)))
-    story.append(Paragraph(_text(payload.get("city")), ParagraphStyle("cover-city", fontName=FONT, fontSize=12, leading=16, textColor=MUTED, spaceAfter=18 * mm)))
-    story.append(Paragraph(_text(report.get("cover_line") or "O que a internet realmente consegue provar sobre sua empresa."), styles["lead"]))
-    story.append(Spacer(1, 22 * mm))
-    story.append(Paragraph("Investigada como um cliente, um concorrente e um sistema de IA investigariam: sem assumir que a narrativa da própria marca é verdadeira.", styles["small"]))
-    story.append(PageBreak())
+    def section(title, subtitle="", min_next=28):
+        nonlocal section_number
+        section_number += 1
+        band = SectionBand(f"{section_number:02d}", title, subtitle)
+        band.wrap(doc.width, doc.height)
+        # Reserve only the beginning of the next block, not its entire height.
+        # keepWithNext would push a multi-page card/table to a fresh page.
+        story.append(CondPageBreak(band.height + band.spaceBefore + band.spaceAfter + min_next))
+        story.append(band)
 
-    # choque inicial
-    story.append(SectionBand("01", "A primeira impressão não encerra a investigação", "Aparência profissional e autoridade comprovada são coisas diferentes."))
-    story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph(_text(report.get("opening")), styles["lead"]))
-    counts = payload.get("counts", {})
-    story.append(MetricStrip([
-        (str(counts.get("sources", 0)), "fontes públicas examinadas"),
-        (str(counts.get("approved", 0)), "evidências aprovadas"),
-        (str(counts.get("discarded", 0)), "sinais descartados ou rejeitados"),
-        (str(counts.get("searches", 0)), "frentes de investigação"),
-    ]))
-    story.append(Spacer(1, 7 * mm))
-    strengths = report.get("surface_strengths") or []
-    if strengths:
-        story.append(Paragraph("À primeira vista, há sinais que ajudam a empresa a parecer sólida.", styles["h2"]))
-        for item in strengths[:6]:
-            story.append(Paragraph("• " + _text(item), styles["body"]))
-        story.append(Spacer(1, 5 * mm))
-        story.append(Paragraph("O problema começa quando paramos de olhar a aparência e começamos a exigir evidência.", styles["h2"]))
-    story.append(PageBreak())
+    def paragraph(value, style="body"):
+        if _clean(value):
+            story.append(Paragraph(_text(value), styles[style]))
 
-    # achados
-    story.append(SectionBand("02", "O que não resistiu bem à investigação", "Somente achados aprovados pela auditoria entram aqui."))
-    story.append(Spacer(1, 7 * mm))
+    def bullets(items):
+        for value in dict.fromkeys(_clean(item) for item in items or [] if _clean(item)):
+            story.append(Paragraph("• " + _text(value), styles["bullet"]))
+
+    # The opening shares a page with the content instead of a mostly empty cover.
+    story.append(Paragraph("SKYBOB", ParagraphStyle("brand", fontName=FONT_BOLD, fontSize=29, leading=33, textColor=RED, spaceAfter=2 * mm)))
+    story.append(Paragraph("DOSSIÊ DE AUTORIDADE DIGITAL", styles["small"]))
+    story.append(Paragraph(_text(payload.get("companyName") or "Empresa"), ParagraphStyle("company", fontName=FONT_BOLD, fontSize=25, leading=31, textColor=INK, spaceBefore=4 * mm, spaceAfter=2 * mm, keepWithNext=True)))
+    paragraph(payload.get("city"), "small")
+    paragraph(report.get("cover_line"), "lead")
+    counts = payload.get("counts") or {}
+    story.append(MetricStrip([(counts.get("sources", 0), "fontes públicas"), (counts.get("approved", 0), "evidências aprovadas"), (counts.get("discarded", 0), "sinais descartados"), (counts.get("searches", 0), "frentes pesquisadas")]))
+    paragraph(report.get("opening"), "lead")
+    if report.get("surface_strengths"):
+        paragraph("O que fortalece a primeira impressão", "h2")
+        bullets(report["surface_strengths"])
+
     findings = report.get("findings") or []
+    first_minimum = 28
     if findings:
-        for finding in findings[:8]:
-            refs = _refs_for_ids(finding.get("evidence_ids"), evidence_by_id, source_numbers)
-            story.append(FindingCard(finding.get("title", "Achado"), finding.get("body", ""), finding.get("category", "evidência"), refs))
-            story.append(Spacer(1, 4 * mm))
+        first = FindingCard(findings[0].get("title", "Achado"), "", findings[0].get("category", "evidência"))
+        first.wrap(doc.width, doc.height)
+        first_minimum = first._overhead + 26
+    section("O que a investigação conseguiu sustentar", "Achados aprovados pela auditoria, com referências às fontes.", first_minimum)
+    if findings:
+        for item in findings:
+            story.append(FindingCard(item.get("title", "Achado"), item.get("body", ""), item.get("category", "evidência"), _refs_for_ids(item.get("evidence_ids"), evidence, numbers)))
     else:
-        story.append(Paragraph("A investigação não encontrou fragilidades fortes o suficiente para sustentar um bloco comercial agressivo sem extrapolar as evidências.", styles["lead"]))
-    story.append(PageBreak())
+        paragraph("Não foram confirmadas fragilidades suficientes para sustentar críticas fortes sem extrapolar as evidências.", "lead")
 
-    # prova social
-    story.append(SectionBand("03", "Prova social sob pressão", "Nota alta, seguidores e depoimentos não encerram a análise."))
-    story.append(Spacer(1, 8 * mm))
-    social = report.get("social_proof") or []
-    if social:
-        for item in social[:8]:
-            story.append(Paragraph("• " + _text(item), styles["body"]))
-    else:
-        story.append(Paragraph("Não houve material auditado suficiente para fazer afirmações fortes sobre a prova social sem especulação.", styles["body"]))
-    quotes = [item for item in payload.get("evidence", []) if item.get("auditStatus") == "approved" and item.get("quote")]
-    if quotes:
-        story.append(Spacer(1, 5 * mm))
-        story.append(Paragraph("Quando a empresa perde o controle da conversa", styles["h2"]))
-        for item in quotes[:4]:
-            refs = _refs_for_ids([item["id"]], evidence_by_id, source_numbers)
-            story.append(Paragraph(f'“{_text(item.get("quote"))}” <font size="7" color="#6B788A">{refs}</font>', styles["quote"]))
-    story.append(PageBreak())
+    quotes = [item for item in payload.get("evidence", []) if item.get("auditStatus") == "approved" and item.get("quote") and item.get("evidenceType") == "customer_report"][:4]
+    if report.get("social_proof") or quotes:
+        section("Prova social sob pressão", "Avaliações e depoimentos no contexto das evidências encontradas.")
+        bullets(report.get("social_proof"))
+        for item in quotes:
+            refs = _refs_for_ids([item["id"]], evidence, numbers)
+            story.append(Paragraph(f'“{_text(item["quote"])}”<br/><font size="7" color="#6B788A">{_text(refs)}</font>', styles["quote"]))
 
-    # promessa x evidência
-    story.append(SectionBand("04", "Marketing é fácil. Evidência é mais difícil.", "O que a marca transmite versus o que foi possível sustentar."))
-    story.append(Spacer(1, 7 * mm))
     matrix = report.get("promise_matrix") or []
     if matrix:
-        data = [["O que a empresa transmite", "O que foi possível comprovar", "Estado"]]
-        status_labels = {"supported": "Sustentado", "partially_supported": "Parcial", "not_verified": "Não verificado", "contradicted": "Contradição"}
-        sections = []
-        for row in matrix[:8]:
-            refs = _refs_for_ids(row.get("evidence_ids"), evidence_by_id, source_numbers)
-            evidence_text = _clean(row.get("evidence")) + (f"\n{refs}" if refs else "")
-            claim = Paragraph(_text(row.get("claim")), styles["small"])
-            evidence = Paragraph(_text(evidence_text), styles["small"])
-            status = Paragraph(_text(status_labels.get(row.get("status"), _clean(row.get("status")))), styles["small"])
-            paragraphs = [claim, evidence, status]
-            cell_widths = [55 * mm, 88 * mm, 29 * mm]
-            tallest = max(p.wrap(w - 6 * mm, doc.height)[1] for p, w in zip(paragraphs, cell_widths))
-            # A ReportLab Table cannot split a single oversized row.
-            if tallest + 10 * mm > doc.height - 25 * mm:
-                if len(data) > 1:
-                    sections.append(("table", data))
-                    data = [data[0]]
-                sections.append(("long", paragraphs))
-            else:
-                data.append(paragraphs)
-        if len(data) > 1:
-            sections.append(("table", data))
-        for kind, value in sections:
-            if kind == "long":
-                # Plain paragraphs can continue across pages safely.
-                story.append(Paragraph(data[0][0], styles["h2"]))
-                story.append(value[0])
-                story.append(Spacer(1, 3 * mm))
-                story.append(Paragraph(data[0][1], styles["h2"]))
-                story.append(value[1])
-                story.append(Spacer(1, 2 * mm))
-                story.append(value[2])
-                story.append(Spacer(1, 5 * mm))
-                continue
-            table = Table(value, colWidths=[55 * mm, 88 * mm, 29 * mm], repeatRows=1, hAlign="LEFT")
-            table.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), NAVY), ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-                ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD), ("FONTSIZE", (0, 0), (-1, 0), 7.5),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm), ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm), ("GRID", (0, 0), (-1, -1), .35, LINE),
-                ("BACKGROUND", (0, 1), (-1, -1), WHITE),
-            ]))
-            story.append(table)
-    else:
-        story.append(Paragraph("Não foi possível construir uma matriz promessa x evidência sem inventar alegações ou extrapolar fontes.", styles["body"]))
-    story.append(PageBreak())
+        section("Marketing é fácil. Evidência é mais difícil.", "O que a marca transmite e o que foi possível comprovar.", 80)
+        widths = [doc.width * .29, doc.width * .54, doc.width * .17]
+        header = ParagraphStyle("table-heading", fontName=FONT_BOLD, fontSize=7, leading=10, textColor=WHITE)
+        cell = ParagraphStyle("table-cell", fontName=FONT, fontSize=8, leading=11.5, textColor=INK, splitLongWords=True)
+        data = [[Paragraph(value, header) for value in ("O que a empresa transmite", "O que foi possível comprovar", "Estado")]]
+        labels = {"supported": "Sustentado", "partially_supported": "Parcial", "not_verified": "Não verificado", "contradicted": "Contradição"}
+        for item in matrix:
+            refs = _refs_for_ids(item.get("evidence_ids"), evidence, numbers)
+            text = _clean(item.get("evidence")) + ("\n" + refs if refs else "")
+            data.append([Paragraph(_text(value), cell) for value in (item.get("claim"), text, labels.get(item.get("status"), item.get("status", "")))])
+        table = Table(data, colWidths=widths, repeatRows=1, splitByRow=1, splitInRow=1, hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), NAVY), ("BACKGROUND", (0, 1), (-1, -1), WHITE),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"), ("GRID", (0, 0), (-1, -1), .35, LINE),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm), ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
+            ("TOPPADDING", (0, 0), (-1, -1), 3 * mm), ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+        ]))
+        story.append(table)
 
-    # autoridade + IA
-    story.append(SectionBand("05", "Autoridade não é declarada. É demonstrada.", "A presença própria da marca não substitui validação independente."))
-    story.append(Spacer(1, 8 * mm))
-    for item in (report.get("authority_bullets") or [])[:8]:
-        story.append(Paragraph("• " + _text(item), styles["body"]))
-    story.append(Spacer(1, 7 * mm))
-    story.append(Paragraph("Uma IA não conhece sua empresa porque você diz que ela é boa.", styles["h2"]))
-    for item in (report.get("ai_visibility_bullets") or [])[:8]:
-        story.append(Paragraph("• " + _text(item), styles["body"]))
-    story.append(PageBreak())
+    if report.get("authority_bullets") or report.get("ai_visibility_bullets"):
+        section("Autoridade demonstrada e presença nas IAs", "A presença própria da marca e sua validação externa.")
+        bullets(report.get("authority_bullets"))
+        if report.get("ai_visibility_bullets"):
+            paragraph("O que as evidências dizem sobre a visibilidade em IA", "h2")
+            bullets(report["ai_visibility_bullets"])
 
-    # síntese
-    story.append(SectionBand("06", "Onde a credibilidade fica vulnerável", "Sem plano de ação. Só o que a auditoria conseguiu sustentar."))
-    story.append(Spacer(1, 8 * mm))
-    synthesis = report.get("synthesis_bullets") or []
-    if synthesis:
-        for idx, item in enumerate(synthesis[:8], start=1):
-            body = Paragraph(_text(item), styles["body"])
-            if body.wrap(146 * mm, doc.height)[1] + 14 * mm > doc.height - 25 * mm:
-                story.append(Paragraph(str(idx).zfill(2), styles["h2"]))
-                story.append(body)
-                story.append(Spacer(1, 5 * mm))
-                continue
-            card = Table([[str(idx).zfill(2), body]], colWidths=[13 * mm, 154 * mm])
-            card.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (0, 0), NAVY), ("TEXTCOLOR", (0, 0), (0, 0), WHITE),
-                ("FONTNAME", (0, 0), (0, 0), FONT_BOLD), ("ALIGN", (0, 0), (0, 0), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("BACKGROUND", (1, 0), (1, 0), WHITE),
-                ("BOX", (0, 0), (-1, -1), .5, LINE), ("LEFTPADDING", (1, 0), (1, 0), 4 * mm),
-                ("RIGHTPADDING", (1, 0), (1, 0), 4 * mm), ("TOPPADDING", (0, 0), (-1, -1), 4 * mm),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
-            ]))
-            story.append(card)
-            story.append(Spacer(1, 3 * mm))
-    story.append(PageBreak())
+    if report.get("synthesis_bullets"):
+        section("O que fica documentado", "Síntese dos pontos sustentados pela investigação.")
+        for index, value in enumerate(report["synthesis_bullets"], 1):
+            story.append(Paragraph(f"<b>{index:02d}.</b> " + _text(value), styles["bullet"]))
 
-    # plano bloqueado
     hidden = report.get("hidden_next_steps") or []
-    fronts = {str(item.get("front") or "").strip() for item in hidden if str(item.get("front") or "").strip()}
-    story.append(SectionBand("07", "O diagnóstico termina aqui", "A investigação revela as vulnerabilidades. A correção é outra etapa."))
-    story.append(Spacer(1, 10 * mm))
-    story.append(LockedPlan(len(hidden), len(fronts)))
-    story.append(Spacer(1, 8 * mm))
-    story.append(Paragraph("A investigação mostra onde sua credibilidade quebra. A correção não faz parte deste documento.", styles["lead"]))
-    story.append(PageBreak())
+    minimum = LockedPlan(len(hidden), 0).height if hidden else 28
+    section("O diagnóstico termina aqui", "A estratégia de correção é outra etapa.", minimum)
+    if hidden:
+        fronts = {item.get("front") for item in hidden if item.get("front")}
+        story.append(LockedPlan(len(hidden), len(fronts)))
+    paragraph(report.get("final_line") or "A investigação está documentada. A estratégia de correção não faz parte deste dossiê.", "lead")
 
-    # fontes
-    story.append(SectionBand("08", "Evidências verificáveis", "Referências usadas pelos achados apresentados no dossiê."))
-    story.append(Spacer(1, 7 * mm))
-    if source_urls:
-        for url in source_urls[:40]:
-            number = source_numbers[url]
-            story.append(Paragraph(f"[{number}] <b>{_text(_host(url))}</b><br/><font size='7'>{_text(url)}</font>", styles["small"]))
-    else:
-        story.append(Paragraph("Nenhuma fonte foi utilizada no material comercial final.", styles["body"]))
-    story.append(PageBreak())
-
-    # fechamento
-    story.append(Spacer(1, 34 * mm))
-    story.append(Paragraph("Agora você sabe onde está vulnerável.", styles["final"]))
-    story.append(Paragraph(_text(report.get("final_line") or "O problema já está documentado. A solução não faz parte deste dossiê."), styles["center"]))
-    story.append(Spacer(1, 20 * mm))
-    story.append(Paragraph("ESTRATÉGIA DE CORREÇÃO - NÃO INCLUÍDA NESTA AUDITORIA", ParagraphStyle("locked-footer", fontName=FONT_BOLD, fontSize=9, leading=12, alignment=TA_CENTER, textColor=RED)))
-    story.append(Spacer(1, 28 * mm))
-    story.append(Paragraph(f"Dossiê gerado em {datetime.now().strftime('%d/%m/%Y')} a partir de evidências públicas. Relatos e indícios permanecem identificados como tais; ausência de informação não é tratada como irregularidade.", styles["small"]))
-
+    # Compact references remain in the document's natural flow, with clickable URLs.
+    if urls:
+        paragraph("Referências das evidências", "h2")
+        for url in urls:
+            parsed = urlparse(url)
+            label = f"[{numbers[url]}] {_text(_host(url))}"
+            href = escape(url, {'"': "&quot;"})
+            link = f'<link href="{href}" color="#3974D8">{_text(url)}</link>' if parsed.scheme in {"http", "https"} else _text(url)
+            story.append(Paragraph(f"<b>{label}</b><br/>{link}", styles["small"]))
+    stamp = payload.get("completedAt") or ""
+    try:
+        date = datetime.fromisoformat(stamp).strftime("%d/%m/%Y")
+    except ValueError:
+        date = datetime.now().strftime("%d/%m/%Y")
+    paragraph(f"Investigação concluída em {date}. Relatos e indícios permanecem identificados; limitações de acesso não demonstram irregularidades.", "small")
     doc.build(story)
     return buffer.getvalue()

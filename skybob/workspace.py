@@ -183,7 +183,7 @@ def register_skybob(app, session_factory, user_model, get_current_user):
 
     @router.post("/investigations/{investigation_id}/action")
     def investigation_action(investigation_id: str, data=Depends(read_json), store=Depends(account_store)):
-        return store.action(investigation_id, str(data.get("action") or ""))
+        return store.action(investigation_id, str(data.get("action") or ""), data)
 
     @router.get("/investigations/{investigation_id}/pdf")
     def investigation_pdf(investigation_id: str, store=Depends(account_store)):
