@@ -151,6 +151,44 @@ def resolve_many(store, data):
     return {"accepted": len(accepted), "changed": sum(r.get("nicheChanged", False) for r in accepted), "alreadyAccepted": sum(r.get("alreadyAccepted", False) for r in accepted), "skipped": skipped}
 
 
+def approve_all_companies(store, immersion_id):
+    """Confirma os cadastros completos da imersão em uma única transação."""
+    approved, skipped = 0, []
+    already_ready, excluded = 0, 0
+    with store.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if not db.execute("SELECT id FROM immersions WHERE id=?", (immersion_id,)).fetchone():
+            raise core.AppError("Imersão não encontrada.", 404)
+        if db.execute("SELECT id FROM jobs WHERE immersion_id=? AND status IN ('queued','running','paused')", (immersion_id,)).fetchone():
+            raise core.AppError("Conclua ou encerre a fila atual antes de aprovar todas as empresas.", 409)
+        suggestions = {item["companyId"]: item for item in pending(db, immersion_id)}
+        companies = list(db.execute("SELECT * FROM companies WHERE immersion_id=? ORDER BY rowid", (immersion_id,)))
+        for company in companies:
+            if company["status"] == "excluded":
+                excluded += 1
+                continue
+            if company["status"] == "ready":
+                already_ready += 1
+                continue
+            suggestion = suggestions.get(company["id"])
+            name = company["name"].strip()
+            niche = str(suggestion["niche"] if suggestion else company["niche"]).strip()
+            city = str((suggestion["city"] if suggestion else "") or company["actual_city"]).strip()
+            neighborhood = str((suggestion["neighborhood"] if suggestion else "") or company["actual_neighborhood"]).strip()
+            if not name or core.generic(name) or not niche or not city or not neighborhood or len(name) > 250 or len(niche) > 200:
+                skipped.append({"id": company["id"], "name": name or company["original_name"], "reason": "Confira nome, nicho, cidade e bairro antes de aprovar."})
+                continue
+            if suggestion:
+                result = _resolve(db, suggestion["id"], {"action": "accept"})
+                if result.get("status") != "accepted" or result.get("companyStatus") != "ready":
+                    skipped.append({"id": company["id"], "name": name, "reason": "O cadastro mudou. Confira os dados atuais."})
+                    continue
+            else:
+                db.execute("UPDATE companies SET status='ready',updated_at=? WHERE id=?", (core.now(), company["id"]))
+            approved += 1
+    return {"approved": approved, "alreadyReady": already_ready, "excluded": excluded, "skipped": skipped, "total": len(companies)}
+
+
 def job_results(db, job):
     """Resultado persistente da identificação, incluindo aprovações automáticas."""
     rows, counts = [], {key: 0 for key in ("pending", "accepted", "autoApproved", "changed", "unchanged", "reused", "inconclusive", "failed", "superseded", "stopped", "queued", "running")}

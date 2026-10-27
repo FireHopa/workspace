@@ -221,6 +221,10 @@ def register_mapa_ia(app, session_factory, user_model, get_current_user):
     def import_upload(data=Depends(read_json), store=Depends(account_store)):
         return store.import_upload(data)
 
+    @router.post("/immersions/{immersion_id}/approve-companies")
+    def approve_companies(immersion_id: str, store=Depends(account_store)):
+        return niche_reviews.approve_all_companies(store, immersion_id)
+
     @router.post("/companies/{company_id}")
     def update_company(company_id: str, data=Depends(read_json), store=Depends(account_store)):
         return store.update_company(company_id, data)
